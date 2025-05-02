@@ -10,13 +10,5 @@ export default function Comments({ slug }: { slug: string }) {
   if (!siteMetadata.comments?.provider) {
     return null
   }
-  return (
-    <>
-      {loadComments ? (
-        <CommentsComponent commentsConfig={siteMetadata.comments} slug={slug} />
-      ) : (
-        <button onClick={() => setLoadComments(true)}>Load Comments</button>
-      )}
-    </>
-  )
+  return <CommentsComponent commentsConfig={siteMetadata.comments} slug={slug} />
 }
