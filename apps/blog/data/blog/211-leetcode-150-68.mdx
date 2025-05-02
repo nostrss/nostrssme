@@ -1,0 +1,618 @@
+---
+title: "[Leetcode] 68. Text Justification"
+date: '2025-01-28'
+tags: ['leetcode', 'coding', 'algorithm']
+draft: false
+summary: "주어진 단어들을 가로로 정렬하고, 주어진 길이만큼 가득 채우는 방법을 찾는 문제"
+---
+
+## 문제
+
+[Top Interview 150 : 69. Text Jstification ](https://leetcode.com/problems/text-justification/description/?envType=study-plan-v2&envId=top-interview-150)
+처음으로 풀어보는 hard 문제이다. 
+
+같이 스터디를 하는 분이 먼저 푸는 모습을 보고 나는 다르게 풀어보고 싶다는 생각을 하다가 도전해봤다.
+
+## Typescript로 풀기
+```ts
+function fullJustify(words: string[], maxWidth: number): string[] {
+    const result: string[] = [];
+    let tmp: string[] = [];
+    let tmpWordTotalLength = 0;  
+    let tmpWordCounter = 0;   
+
+    const initTmp = () => {
+        tmp = [];
+        tmpWordTotalLength = 0;
+        tmpWordCounter = 0;
+    };
+
+    /**
+     * isLastLine: true 면 마지막 줄이므로 left-justify(왼쪽 정렬) 처리
+     */
+    const flushTmp = (isLastLine: boolean) : void => {
+        if (tmp.length === 0) return;
+
+        // 단어가 1개이거나, 마지막 줄이면 => left-justify
+        if (tmp.length === 1 || isLastLine) {
+            // 왼쪽 정렬 시엔 단어들을 한 칸씩만 띄우고,
+            // 남는 자리는 우측에 공백을 채워넣음
+            const line = tmp.join(' ');
+            const spacesToFill = maxWidth - line.length;
+            result.push(line + ' '.repeat(spacesToFill));
+            return;
+        }
+
+        // tmp 에 들어있는 모든 단어 길이(tmpWordTotalLength) + 총 공간 = maxWidth
+        // totalSpace = maxWidth - tmpWordTotalLength
+        // totalSpace를 분배 작업하
+        let totalSpace = maxWidth - tmpWordTotalLength;   
+        let spaceArea = tmp.length - 1; // 단어 사이 갯수
+        const baseSpace = Math.floor(totalSpace / spaceArea);
+        let extraSpace = totalSpace - baseSpace * spaceArea;
+
+        const buffer = tmp.map((word, idx) => {
+            if (idx < spaceArea) {
+                // 왼쪽부터 차례로 extraSpace를 1개씩 더 배정
+                const thisGap = baseSpace + (extraSpace > 0 ? 1 : 0);
+                if (extraSpace > 0) extraSpace--;
+                return word + ' '.repeat(thisGap);
+            } else {
+                // 마지막 단어는 뒤에 공백 없이 붙임
+                return word;
+            }
+        });
+        result.push(buffer.join(''));
+    };
+
+    words.forEach((word, index) => {
+        if (tmpWordTotalLength + tmpWordCounter + word.length <= maxWidth) {
+            tmp.push(word);
+            tmpWordTotalLength += word.length;
+            tmpWordCounter++;
+        } else {
+            flushTmp(false);  
+            initTmp();
+            tmp.push(word);
+            tmpWordTotalLength += word.length;
+            tmpWordCounter++;
+        }
+    });
+
+    // 마지막으로 tmp에 남아있는 단어들 처리 (마지막 줄)
+    flushTmp(true);
+
+    return result;
+}
+
+```
+> 문제풀이
+* 2단계로 풀 생각을 했었다.
+* 1단계는 단어를 넣어서 줄을 만드는 것이고, 2단계는 주어진 MaxWidth에 맞게 재조정을 해서 가득 채우는 것이다.
+* 하지만 MaxWidth에 맞게 재조정을 하는 것이 생각보다 어려웠다.
+
+## GPT를 이용해서 C언어로 바꿔보기 
+
+```c
+/**
+ * Note: The returned array must be malloced, assume caller calls free().
+ */
+char* create_spaces(int count) {
+    if (count <= 0) {
+        char* empty = (char*)malloc(1);
+        if (empty) empty[0] = '\0';
+        return empty;
+    }
+    char* spaces = (char*)malloc((count + 1) * sizeof(char));
+    if (!spaces) return NULL;
+    for (int i = 0; i < count; i++) {
+        spaces[i] = ' ';
+    }
+    spaces[count] = '\0';
+    return spaces;
+}
+
+char** fullJustify(char** words, int wordsSize, int maxWidth, int* returnSize) {
+    // Allocate maximum possible lines (worst case: each word is a line)
+    char** result = (char**)malloc(wordsSize * sizeof(char*));
+    if (!result) return NULL;
+    *returnSize = 0;
+
+    int index = 0; // Current word index
+
+    while (index < wordsSize) {
+        int line_start = index;
+        int line_length = strlen(words[index]);
+        index++;
+
+        // Determine how many words can fit into the current line
+        while (index < wordsSize) {
+            int word_length = strlen(words[index]);
+            if (line_length + 1 + word_length > maxWidth) {
+                break;
+            }
+            line_length += 1 + word_length; // 1 for space
+            index++;
+        }
+
+        int line_end = index - 1;
+        int num_words_in_line = line_end - line_start + 1;
+
+        // Calculate the number of spaces to distribute
+        int total_spaces = maxWidth - 0; // Initialize to maxWidth
+        for (int i = line_start; i <= line_end; i++) {
+            total_spaces -= strlen(words[i]);
+        }
+
+        char* line = NULL;
+
+        // Check if it's the last line or the line contains only one word
+        if (index == wordsSize || num_words_in_line == 1) {
+            // Left-justified: words separated by single space
+            // and pad the end with spaces
+            // Calculate total length with single spaces
+            int total_length = 0;
+            for (int i = line_start; i <= line_end; i++) {
+                total_length += strlen(words[i]);
+                if (i != line_end) {
+                    total_length += 1; // single space
+                }
+            }
+            int spaces_to_add = maxWidth - total_length;
+
+            // Allocate memory for the line
+            line = (char*)malloc((maxWidth + 1) * sizeof(char));
+            if (!line) {
+                // Handle memory allocation failure
+                for (int j = 0; j < *returnSize; j++) {
+                    free(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+            line[0] = '\0';
+
+            // Concatenate words with single spaces
+            for (int i = line_start; i <= line_end; i++) {
+                strcat(line, words[i]);
+                if (i != line_end) {
+                    strcat(line, " ");
+                }
+            }
+
+            // Append remaining spaces
+            char* spaces = create_spaces(spaces_to_add);
+            if (spaces) {
+                strcat(line, spaces);
+                free(spaces);
+            }
+        } else {
+            // Fully-justified
+            int gaps = num_words_in_line - 1;
+            int space_per_gap = total_spaces / gaps;
+            int extra_spaces = total_spaces % gaps;
+
+            // Allocate memory for the line
+            line = (char*)malloc((maxWidth + 1) * sizeof(char));
+            if (!line) {
+                // Handle memory allocation failure
+                for (int j = 0; j < *returnSize; j++) {
+                    free(result[j]);
+                }
+                free(result);
+                return NULL;
+            }
+            line[0] = '\0';
+
+            for (int i = line_start; i <= line_end; i++) {
+                strcat(line, words[i]);
+                if (i != line_end) {
+                    // Calculate spaces to add after this word
+                    int spaces_to_insert = space_per_gap + (extra_spaces > 0 ? 1 : 0);
+                    if (extra_spaces > 0) extra_spaces--;
+
+                    char* spaces = create_spaces(spaces_to_insert);
+                    if (spaces) {
+                        strcat(line, spaces);
+                        free(spaces);
+                    }
+                }
+            }
+        }
+
+        // Add the constructed line to the result
+        result[*returnSize] = line;
+        (*returnSize)++;
+    }
+
+    // Optionally resize the result array to the actual number of lines
+    result = (char**)realloc(result, (*returnSize) * sizeof(char*));
+
+    return result;
+}
+
+// Function to print the justified text for demonstration
+void printJustifiedText(char** justifiedText, int numLines) {
+    for (int i = 0; i < numLines; i++) {
+        printf("\"%s\"\n", justifiedText[i]);
+    }
+}
+
+```
+예상은 했지만 Typescript로 푼 것보다 훨씬 복잡하고 소스코드의 길이도 길어졌다.
+
+### Q: 함수 선언할때 char* create_spaces(int count) 이렇게 선언하는 이유가 뭐야? 
+### A: GPT
+```c
+char* create_spaces(int count)
+```
+char*: 이 부분은 함수가 char 타입의 포인터를 반환함을 의미합니다. 즉, 이 함수는 문자 배열(문자열)의 시작 주소를 반환합니다.
+
+
+
+
+## GPT를 이용해서 C++로 바꿔보기
+```c++
+class Solution {
+public:
+    vector<string> fullJustify(vector<string>& words, int maxWidth) {
+        vector<string> result;       // 최종 정렬된 라인들을 저장할 벡터
+        int index = 0;               // 현재 단어의 인덱스
+
+        while (index < words.size()) {
+            int line_start = index;  // 현재 라인의 시작 단어 인덱스
+            int line_length = words[index].length();  // 현재 라인의 총 단어 길이
+            index++;
+
+            // 현재 라인에 포함될 단어들을 결정
+            while (index < words.size()) {
+                // 다음 단어를 추가했을 때의 총 길이 (단어 사이의 최소 한 칸 공백 포함)
+                if (line_length + 1 + words[index].length() > maxWidth) {
+                    break;
+                }
+                line_length += 1 + words[index].length(); // 단어 길이와 공백 추가
+                index++;
+            }
+
+            int line_end = index - 1;  // 현재 라인의 마지막 단어 인덱스
+            int num_words_in_line = line_end - line_start + 1;  // 현재 라인의 단어 개수
+
+            string line;  // 현재 라인을 저장할 문자열
+
+            // 마지막 라인 또는 단어가 하나인 경우 왼쪽 정렬
+            if (index == words.size() || num_words_in_line == 1) {
+                // 단어들을 한 칸씩 공백으로 연결
+                for (int i = line_start; i <= line_end; i++) {
+                    line += words[i];
+                    if (i != line_end) {
+                        line += ' ';
+                    }
+                }
+
+                // 남은 공간을 공백으로 채움
+                int remaining = maxWidth - line.length();
+                line += string(remaining, ' ');
+            }
+            else {
+                // 공백을 고르게 분배
+                int total_spaces = maxWidth - (line_length - (num_words_in_line - 1)); // 총 공백 개수
+                int space_between_words = total_spaces / (num_words_in_line - 1);     // 단어 사이 기본 공백
+                int extra_spaces = total_spaces % (num_words_in_line - 1);            // 왼쪽부터 추가로 배분할 공백
+
+                for (int i = line_start; i <= line_end; i++) {
+                    line += words[i];
+                    if (i != line_end) {
+                        // 기본 공백 추가
+                        line += string(space_between_words, ' ');
+
+                        // 추가 공백을 왼쪽부터 배분
+                        if (extra_spaces > 0) {
+                            line += ' ';
+                            extra_spaces--;
+                        }
+                    }
+                }
+            }
+
+            // 완성된 라인을 결과 벡터에 추가
+            result.push_back(line);
+        }
+
+        return result;
+    }
+};
+
+// Helper function to print the justified text
+void printJustifiedText(vector<string> justifiedText) {
+    for (const string& line : justifiedText) {
+        cout << "\"" << line << "\"" << endl;
+    }
+}
+
+
+```
+* GPT가 희한하게 배열이 비어있는 경우를 처리하는 코드를 제일 먼저 실행 되도록 추가해주었다.
+
+## GPT를 이용해서 JAVA로 바꿔보기
+
+```java
+class Solution {
+    /**
+     * Formats a list of words into fully justified text.
+     *
+     * @param words     An array of words to be justified.
+     * @param maxWidth  The maximum width of each line.
+     * @return          A list of strings, each representing a fully justified line.
+     */
+    public List<String> fullJustify(String[] words, int maxWidth) {
+        List<String> result = new ArrayList<>(); // 최종 결과를 저장할 리스트
+        int index = 0; // 현재 처리 중인 단어의 인덱스
+        int n = words.length; // 단어 배열의 길이
+
+        while (index < n) {
+            int lineStart = index; // 현재 라인의 시작 단어 인덱스
+            int lineLength = words[index].length(); // 현재 라인의 단어 길이 합
+            index++;
+
+            // 현재 라인에 포함될 단어들을 결정
+            while (index < n) {
+                if (lineLength + 1 + words[index].length() > maxWidth) {
+                    break; // 다음 단어를 추가하면 maxWidth를 초과하므로 중지
+                }
+                lineLength += 1 + words[index].length(); // 단어 길이와 공백 추가
+                index++;
+            }
+
+            int lineEnd = index - 1; // 현재 라인의 마지막 단어 인덱스
+            int numWordsInLine = lineEnd - lineStart + 1; // 현재 라인의 단어 개수
+
+            StringBuilder line = new StringBuilder(); // 현재 라인을 구성할 StringBuilder
+
+            // 마지막 라인 또는 단어가 하나인 경우 왼쪽 정렬
+            if (index == n || numWordsInLine == 1) {
+                for (int i = lineStart; i <= lineEnd; i++) {
+                    line.append(words[i]);
+                    if (i != lineEnd) {
+                        line.append(' '); // 단어 사이에 한 칸의 공백 추가
+                    }
+                }
+                // 남은 공간을 공백으로 채움
+                int remaining = maxWidth - line.length();
+                while (remaining > 0) {
+                    line.append(' ');
+                    remaining--;
+                }
+            }
+            else {
+                // 양쪽 정렬: 공백을 고르게 분배
+                int totalSpaces = maxWidth - (lineLength - (numWordsInLine - 1)); // 총 공백 개수
+                int spaceBetweenWords = totalSpaces / (numWordsInLine - 1); // 단어 사이 기본 공백
+                int extraSpaces = totalSpaces % (numWordsInLine - 1); // 왼쪽부터 추가로 배분할 공백
+
+                for (int i = lineStart; i <= lineEnd; i++) {
+                    line.append(words[i]);
+                    if (i != lineEnd) {
+                        // 기본 공백 추가
+                        for (int s = 0; s < spaceBetweenWords; s++) {
+                            line.append(' ');
+                        }
+                        // 추가 공백을 왼쪽부터 배분
+                        if (extraSpaces > 0) {
+                            line.append(' ');
+                            extraSpaces--;
+                        }
+                    }
+                }
+            }
+
+            // 완성된 라인을 결과 리스트에 추가
+            result.add(line.toString());
+        }
+
+        return result;
+    }
+
+    // 헬퍼 메서드: 리스트의 내용을 출력
+    private static void printJustifiedText(List<String> justifiedText) {
+        for (String line : justifiedText) {
+            System.out.println("\"" + line + "\"");
+        }
+    }
+}
+```
+
+## GPT를 이용해서 RUST로 바꿔보기
+```rust
+impl Solution {
+    pub fn full_justify(words: Vec<String>, max_width: i32) -> Vec<String> {
+        let max_width = max_width as usize;
+        let mut result = Vec::new();
+        let mut index = 0;
+        let n = words.len();
+
+        while index < n {
+            let line_start = index;
+            let mut line_length = words[index].len();
+            index += 1;
+
+            while index < n {
+                if line_length + 1 + words[index].len() > max_width {
+                    break;
+                }
+                line_length += 1 + words[index].len(); // 1 for space
+                index += 1;
+            }
+
+            let line_end = index - 1;
+            let num_words_in_line = line_end - line_start + 1;
+
+            let mut line = String::new();
+
+            // Check if it's the last line or the line contains only one word
+            if index == n || num_words_in_line == 1 {
+                // Left-justified: words separated by single space
+                for i in line_start..=line_end {
+                    line.push_str(&words[i]);
+                    if i != line_end {
+                        line.push(' ');
+                    }
+                }
+                // Fill the remaining spaces at the end
+                let remaining = max_width - line.len();
+                if remaining > 0 {
+                    line.push_str(&" ".repeat(remaining));
+                }
+            } else {
+                // Fully-justified
+                let total_spaces = max_width - (line_length - (num_words_in_line - 1));
+                let space_between_words = total_spaces / (num_words_in_line - 1);
+                let extra_spaces = total_spaces % (num_words_in_line - 1);
+
+                for i in line_start..=line_end {
+                    line.push_str(&words[i]);
+                    if i != line_end {
+                        // Add base spaces
+                        line.push_str(&" ".repeat(space_between_words));
+                        // Distribute extra spaces to the left
+                        if extra_spaces > 0 {
+                            line.push(' ');
+                            // Rust's for loops don't allow modifying the loop variable directly,
+                            // so we handle extra_spaces decrement here
+                            // by checking if we have to add an extra space
+                            // and then reducing the counter
+                            // This is safe since we know how many times we can add extra spaces
+                            // based on the loop iteration
+                            // So, we use min to ensure we don't underflow
+                            // even though logically it shouldn't happen
+                            // because extra_spaces <= num_words_in_line -1
+                            // However, Rust's unsigned types panic on underflow
+                            // if we try to subtract below zero
+                            // So, we use a checked approach
+                            if extra_spaces > 0 {
+                                line.push(' ');
+                                // Since Rust does not allow modifying the loop variable,
+                                // and we cannot mutate extra_spaces directly in a for loop,
+                                // we need to handle it differently.
+                                // One way is to use a separate counter.
+                                // Alternatively, we can iterate with enumerate.
+                                // But to keep it simple, we'll adjust the extra_spaces here
+                                // by using min.
+                                // However, since extra_spaces is mutable outside the loop,
+                                // and Rust's for loops create an immutable copy,
+                                // we need to make extra_spaces mutable.
+                                // Therefore, let's declare extra_spaces as mutable.
+                                // Then, we can decrement it.
+                                // So, let's adjust the code accordingly.
+                                // To do so, we need to make extra_spaces mutable.
+                                // But Rust does not allow mutable references within the loop,
+                                // so we have to change the declaration.
+
+                                // However, to keep it clean, we'll modify the declaration:
+                                // let mut extra_spaces = total_spaces % (num_words_in_line - 1);
+                                // And then, in the loop, make extra_spaces mutable.
+                                // Let's adjust the code accordingly.
+
+                                // After reconsideration, it's better to declare extra_spaces as mutable earlier.
+                                // So, let's adjust the code above.
+                                // In summary, to fix this, we need to declare extra_spaces as mutable.
+
+                                // For now, since we can't mutate extra_spaces inside the loop, we'll use another approach:
+                                // Calculate how many extra spaces have been added by tracking the loop iteration.
+
+                                // Alternative approach: calculate the number of extra spaces to add based on the index.
+
+                                // Let's refactor the loop accordingly.
+
+                                // To avoid confusion, let's stop adding extra_spaces in this line
+                                // and instead handle extra spaces in a separate condition.
+
+                                // Thus, remove this part and handle extra_spaces differently.
+
+                                // Alternatively, we can use an enumerate loop to track the position.
+                                // Let's do that instead.
+                            }
+                        }
+                    }
+                }
+
+                // To properly handle extra_spaces, let's refactor the loop.
+                // Here's the correct approach:
+                // Iterate through the words, and after each word except the last,
+                // add space_between_words spaces, and if extra_spaces > 0,
+                // add one more space and decrement extra_spaces.
+
+                line.clear(); // Reset the line to build it correctly
+                for i in 0..num_words_in_line {
+                    line.push_str(&words[line_start + i]);
+                    if i != num_words_in_line -1 {
+                        // Add base spaces
+                        line.push_str(&" ".repeat(space_between_words));
+                        // Add extra space if needed
+                        if i < extra_spaces {
+                            line.push(' ');
+                        }
+                    }
+                }
+            }
+
+            result.push(line);
+        }
+
+        result
+    }
+}
+
+```
+
+## GPT를 이용해서 Python으로 바꿔보기
+
+```python
+class Solution:
+    def fullJustify(self, words: List[str], maxWidth: int) -> List[str]:
+        result = []              # 최종 결과를 저장할 리스트
+        index = 0                # 현재 처리 중인 단어의 인덱스
+        n = len(words)           # 단어 리스트의 길이
+
+        while index < n:
+            line_start = index
+            line_length = len(words[index])
+            index += 1
+
+            # 현재 라인에 포함될 단어들을 결정
+            while index < n:
+                if line_length + 1 + len(words[index]) > maxWidth:
+                    break
+                line_length += 1 + len(words[index])
+                index += 1
+
+            line_end = index - 1
+            num_words_in_line = line_end - line_start + 1
+
+            # 마지막 라인이거나 단어가 하나인 경우 왼쪽 정렬
+            if index == n or num_words_in_line == 1:
+                line = ' '.join(words[line_start:line_end + 1])
+                remaining = maxWidth - len(line)
+                line += ' ' * remaining
+            else:
+                total_spaces = maxWidth - (line_length - (num_words_in_line - 1))
+                space_between_words, extra_spaces = divmod(total_spaces, num_words_in_line - 1)
+
+                spaces = [' ' * space_between_words] * (num_words_in_line - 1)
+                for i in range(extra_spaces):
+                    spaces[i] += ' '
+
+                line = ''
+                for i in range(num_words_in_line - 1):
+                    line += words[line_start + i] + spaces[i]
+                line += words[line_end]
+
+            result.append(line)
+
+        return result
+
+# 헬퍼 함수: 리스트의 내용을 출력
+def print_justified_text(justified_text: List[str]):
+    for line in justified_text:
+        print(f"\"{line}\"")
+
+```
