@@ -3,6 +3,7 @@ import Tag from '@/components/Tag'
 import siteMetadata from '@/data/siteMetadata'
 import { formatDate } from 'pliny/utils/formatDate'
 import NewsletterForm from 'pliny/ui/NewsletterForm'
+import Image from 'next/image'
 
 const MAX_DISPLAY = 10
 
@@ -21,7 +22,8 @@ export default function Home({ posts }) {
         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
           {!posts.length && 'No posts found.'}
           {posts.slice(0, MAX_DISPLAY).map((post) => {
-            const { slug, date, title, summary, tags } = post
+            const { slug, date, title, summary, tags, images } = post
+            console.log(images)
             return (
               <li key={slug} className="py-12">
                 <article>
@@ -49,6 +51,11 @@ export default function Home({ posts }) {
                             ))}
                           </div>
                         </div>
+                        {images && images.length > 0 && (
+                          <div className="relative aspect-[2/1] w-full overflow-hidden rounded-lg">
+                            <Image src={images[0]} alt={title} fill className="object-cover" />
+                          </div>
+                        )}
                         <div className="prose max-w-none text-gray-500 dark:text-gray-400">
                           {summary}
                         </div>
