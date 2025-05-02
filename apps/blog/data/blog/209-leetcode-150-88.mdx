@@ -1,38 +1,37 @@
 ---
-title: "[Leetcode] 88. Merge Sorted Array"
+title: '[Leetcode] 88. Merge Sorted Array'
 date: '2025-01-12'
 tags: ['leetcode', 'coding', 'algorithm']
 draft: false
-summary: "새로운 배열을 생성하지 않고 배열 정렬하기"
+summary: '새로운 배열을 생성하지 않고 배열 정렬하기'
 ---
 
 ## 문제
 
 [Top Interview 150 : 88. Merge Sorted Array 문제 보러가기](https://leetcode.com/problems/merge-sorted-array/description/?envType=study-plan-v2&envId=top-interview-150)
 
-
 ## Javascript로 풀기
-```js
-var merge = function(nums1, m, nums2, n) {
-    let p1 = m - 1;
-    let p2 = n - 1;
-    let p = m + n - 1;
-    
-    while (p2 >= 0) {
-        if (p1 >= 0 && nums1[p1] > nums2[p2]) {
-            nums1[p] = nums1[p1];
-            p1--;
-        } else {
-            nums1[p] = nums2[p2];
-            p2--;
-        }
-        p--;
-    }
 
-};
+```js
+var merge = function (nums1, m, nums2, n) {
+  let p1 = m - 1
+  let p2 = n - 1
+  let p = m + n - 1
+
+  while (p2 >= 0) {
+    if (p1 >= 0 && nums1[p1] > nums2[p2]) {
+      nums1[p] = nums1[p1]
+      p1--
+    } else {
+      nums1[p] = nums2[p2]
+      p2--
+    }
+    p--
+  }
+}
 ```
 
-## GPT를 이용해서 C언어로 바꿔보기 
+## GPT를 이용해서 C언어로 바꿔보기
 
 ```c
 void merge(int* nums1, int nums1Size, int m, int* nums2, int nums2Size, int n) {
@@ -56,6 +55,7 @@ void merge(int* nums1, int nums1Size, int m, int* nums2, int nums2Size, int n) {
 ```
 
 ## GPT를 이용해서 C++로 바꿔보기
+
 ```c++
 class Solution {
 public:
@@ -70,7 +70,7 @@ public:
             if (p1 >= 0 && nums1[p1] > nums2[p2]) {
                 nums1[p] = nums1[p1];
                 p1--;
-            } 
+            }
             // 그렇지 않으면 nums2[p2]를 대입
             else {
                 nums1[p] = nums2[p2];
@@ -82,7 +82,6 @@ public:
 };
 ```
 
-
 ## GPT를 이용해서 JAVA로 바꿔보기
 
 ```java
@@ -91,7 +90,7 @@ class Solution {
         int p1 = m - 1;
         int p2 = n - 1;
         int p = m + n - 1;
-    
+
         while (p2 >= 0) {
             if (p1 >= 0 && nums1[p1] > nums2[p2]) {
                 nums1[p] = nums1[p1];
@@ -107,9 +106,10 @@ class Solution {
 ```
 
 ## GPT를 이용해서 RUST로 바꿔보기
+
 ```rust
 impl Solution {
-    pub fn merge(nums1: &mut Vec<i32>, m: i32, nums2: &mut Vec<i32>, n: i32) {
+    pub fn merge(nums1: &mut Vec<i32>;, m: i32, nums2: &mut Vec<i32>;, n: i32) {
          let mut p1 = m - 1;             // nums1의 유효한 마지막 원소 인덱스
         let mut p2 = n - 1;             // nums2의 마지막 원소 인덱스
         let mut p  = (m + n) - 1;       // 병합 후 nums1의 마지막 인덱스
@@ -125,7 +125,7 @@ impl Solution {
                 nums1[p as usize] = nums2[p2 as usize];
                 p2 -= 1;
             }
-            p -= 1; 
+            p -= 1;
         }
     }
 }
@@ -142,7 +142,7 @@ class Solution(object):
         :rtype: int
         """
         p1, p2, p = m - 1, n - 1, m + n - 1
-        
+
         # nums2의 모든 원소를 처리할 때까지 반복
         while p2 >= 0:
             # nums1의 마지막 유효 원소가 nums2의 마지막 원소보다 크면

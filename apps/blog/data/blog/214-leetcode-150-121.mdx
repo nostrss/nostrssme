@@ -1,9 +1,9 @@
 ---
-title: "[Leetcode] 121. Best Time to Buy and Sell Stock"
+title: '[Leetcode] 121. Best Time to Buy and Sell Stock'
 date: '2025-03-04'
 tags: ['leetcode', 'coding', 'algorithm']
 draft: false
-summary: "주식을 사고 팔아서 최대 이익을 얻을 수 있는 가장 좋은 시점을 찾아라."
+summary: '주식을 사고 팔아서 최대 이익을 얻을 수 있는 가장 좋은 시점을 찾아라.'
 ---
 
 ## 문제
@@ -11,6 +11,7 @@ summary: "주식을 사고 팔아서 최대 이익을 얻을 수 있는 가장 �
 [Top Interview 150 : 121.Best Time to Buy and Sell Stock](https://leetcode.com/problems/best-time-to-buy-and-sell-stock/description/?envType=study-plan-v2&envId=top-interview-150)
 
 ## 풀이과정
+
 처음에는 난이도가 easy인 문제라서 쉽게 풀 수 있을 것이라고 생각했지만, 생각보다 어려웠다.
 처음에는 아래와 같이 풀었고 테스트 케이스는 통과했지만, 제출하면 시간초과가 떴다.
 
@@ -21,7 +22,7 @@ function maxProfit(prices: number[]): number {
     if(new Set(prices).size === 1) return 0
 
     let profit = 0
-    
+
     for(let i=0 ; i < prices.length ; i++){
         for( let j=i+1 ; j < prices.length; j++ ){
             if(prices[j] - prices[i] > profit){
@@ -40,77 +41,75 @@ function maxProfit(prices: number[]): number {
  * @param {number[]} prices
  * @return {number}
  */
-var maxProfit = function(prices) {
-    if(prices.length === 1) return 0
-    if(new Set(prices).size === 1) return 0
+var maxProfit = function (prices) {
+  if (prices.length === 1) return 0
+  if (new Set(prices).size === 1) return 0
 
-    let profit = 0
+  let profit = 0
 
-    const getBiggerNumber = (index,array) => {
-        const targetArray = array.slice(index + 1)
-        const maxNumber = Math.max(...targetArray)
-        return maxNumber > array[index] ? maxNumber : array[index]
+  const getBiggerNumber = (index, array) => {
+    const targetArray = array.slice(index + 1)
+    const maxNumber = Math.max(...targetArray)
+    return maxNumber > array[index] ? maxNumber : array[index]
+  }
+
+  for (let i = 0; i < prices.length; i++) {
+    const subProfit = getBiggerNumber(i, prices) - prices[i]
+    if (subProfit > profit) {
+      profit = subProfit
     }
-    
-    for(let i=0 ; i < prices.length ; i++){
-
-        const subProfit = getBiggerNumber(i, prices) - prices[i]
-        if(subProfit > profit){
-            profit = subProfit
-        }
-    }
-    return profit
-};
+  }
+  return profit
+}
 ```
 
 위와 같이 수정한 이유는 배열을 맨앞에서부터 탐색할때, 현재의 요소보다 뒤에 있는 요소중에 현재의 요소보다 큰 값이 있는지 확인하고, 그 값이 현재의 요소보다 크다면 그 차이를 구해서 이익을 계산하는 방식으로 수정했다.
 
 하지만 이 방법도 시간초과가 발생했고 결국 다른 방법을 찾아야 했다.
 
-문제를 계속 생각하다 보니 나는 이런 생각을 했다. 
+문제를 계속 생각하다 보니 나는 이런 생각을 했다.
 
->배열을 앞에서부터 순회하자.
->순회하면서 현재의 요소와 최소값을 비교하고, 최소값을 갱신하자.
->순회하고 있는 현재의 요소와 최소값의 차이가 가장 큰 값을 찾으면 그것이 최대 이익이다.
-
+> 배열을 앞에서부터 순회하자.
+> 순회하면서 현재의 요소와 최소값을 비교하고, 최소값을 갱신하자.
+> 순회하고 있는 현재의 요소와 최소값의 차이가 가장 큰 값을 찾으면 그것이 최대 이익이다.
 
 위와 같은 생각으로 아래와 같이 코드를 작성했다.
 
-
 ## Typescript로 풀기
+
 ```ts
 /**
  * @param {number[]} prices
  * @return {number}
  */
-var maxProfit = function(prices) {
-    if(prices.length === 1) return 0
-    if(new Set(prices).size === 1) return 0
+var maxProfit = function (prices) {
+  if (prices.length === 1) return 0
+  if (new Set(prices).size === 1) return 0
 
-    let profit = 0
-    let minPrice = prices[0]
-    
-    for(let i = 1 ; i < prices.length ; i++){
-        const tmpProfit = prices[i] - minPrice
-        if(tmpProfit > profit){
-            profit = tmpProfit
-        }
-        if(prices[i] < minPrice){
-            minPrice = prices[i]
-        }
+  let profit = 0
+  let minPrice = prices[0]
+
+  for (let i = 1; i < prices.length; i++) {
+    const tmpProfit = prices[i] - minPrice
+    if (tmpProfit > profit) {
+      profit = tmpProfit
     }
-    return profit
-};
+    if (prices[i] < minPrice) {
+      minPrice = prices[i]
+    }
+  }
+  return profit
+}
 ```
 
-## GPT를 이용해서 C언어로 바꿔보기 
+## GPT를 이용해서 C언어로 바꿔보기
 
 ```c
  // 1. 원소가 하나뿐이라면 매매 자체가 불가능하므로 0 반환
     if (pricesSize <= 1) {
         return 0;
     }
-    
+
     // 2. 모든 원소가 동일한지 확인 (모두 같으면 이익이 날 수 없으므로 0 반환)
     int allSame = 1;
     for (int i = 1; i < pricesSize; i++) {
@@ -122,11 +121,11 @@ var maxProfit = function(prices) {
     if (allSame) {
         return 0;
     }
-    
+
     // 3. 최소 매수가와 최대 이익을 추적하면서 반복문을 돌며 갱신
     int minPrice = prices[0];
     int profit = 0;
-    
+
     for (int i = 1; i < pricesSize; i++) {
         int currentProfit = prices[i] - minPrice;
         if (currentProfit > profit) {
@@ -136,11 +135,12 @@ var maxProfit = function(prices) {
             minPrice = prices[i];
         }
     }
-    
+
     return profit;
 ```
 
 ## GPT를 이용해서 C++로 바꿔보기
+
 ```c++
 class Solution {
 public:
@@ -150,7 +150,7 @@ public:
         if (n <= 1) {
             return 0;
         }
-        
+
         // 2. 모든 원소가 동일하면 이익을 낼 수 없으므로 0 반환
         bool allSame = true;
         for (int i = 1; i < n; i++) {
@@ -162,11 +162,11 @@ public:
         if (allSame) {
             return 0;
         }
-        
+
         // 3. 최소 가격(minPrice)과 최대 이익(profit)을 추적하며 반복
         int minPrice = prices[0];
         int profit = 0;
-        
+
         for (int i = 1; i < n; i++) {
             int currentProfit = prices[i] - minPrice;
             if (currentProfit > profit) {
@@ -176,13 +176,12 @@ public:
                 minPrice = prices[i];
             }
         }
-        
+
         return profit;
-        
+
     }
 };
 ```
-
 
 ## GPT를 이용해서 JAVA로 바꿔보기
 
@@ -213,12 +212,12 @@ class Solution {
         for (int i = 1; i < prices.length; i++) {
             // 현재 가격 - 최소 매수가 = 가능한 이익
             int currentProfit = prices[i] - minPrice;
-            
+
             // 최대 이익 갱신
             if (currentProfit > profit) {
                 profit = currentProfit;
             }
-            
+
             // 최소 매수가 갱신
             if (prices[i] < minPrice) {
                 minPrice = prices[i];
@@ -232,6 +231,7 @@ class Solution {
 ```
 
 ## GPT를 이용해서 RUST로 바꿔보기
+
 ```rust
 impl Solution {
     pub fn max_profit(prices: Vec<i32>) -> i32 {
@@ -275,22 +275,22 @@ class Solution:
         # 1. 길이가 1 이하라면 매매 불가능
         if len(prices) <= 1:
             return 0
-        
+
         # 2. 모든 원소가 동일한지 확인 (모두 같으면 0 반환)
         if all(price == prices[0] for price in prices):
             return 0
-        
+
         # 3. 최소 매수가(min_price)와 최대 이익(profit) 계산
         min_price = prices[0]
         profit = 0
-        
+
         for p in prices[1:]:
             current_profit = p - min_price
             if current_profit > profit:
                 profit = current_profit
             if p < min_price:
                 min_price = p
-        
+
         return profit
 
 ```
