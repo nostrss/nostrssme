@@ -23,7 +23,6 @@ export default function Home({ posts }) {
           {!posts.length && 'No posts found.'}
           {posts.slice(0, MAX_DISPLAY).map((post) => {
             const { slug, date, title, summary, tags, images } = post
-            console.log(images)
             return (
               <li key={slug} className="py-12">
                 <article>
@@ -50,12 +49,18 @@ export default function Home({ posts }) {
                               <Tag key={tag} text={tag} />
                             ))}
                           </div>
+                          {images && images.length > 0 && (
+                            <div className="relative h-auto w-full overflow-hidden rounded-lg">
+                              <Image
+                                src={images[0]}
+                                alt={title}
+                                className="object-cover"
+                                width={1200}
+                                height={600}
+                              />
+                            </div>
+                          )}
                         </div>
-                        {images && images.length > 0 && (
-                          <div className="relative aspect-[2/1] w-full overflow-hidden rounded-lg">
-                            <Image src={images[0]} alt={title} fill className="object-cover" />
-                          </div>
-                        )}
                         <div className="prose max-w-none text-gray-500 dark:text-gray-400">
                           {summary}
                         </div>

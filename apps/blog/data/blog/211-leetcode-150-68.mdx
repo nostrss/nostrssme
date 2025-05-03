@@ -1,97 +1,101 @@
 ---
-title: "[Leetcode] 68. Text Justification"
+title: '[Leetcode] 68. Text Justification'
 date: '2025-01-28'
 tags: ['leetcode', 'coding', 'algorithm']
 draft: false
-summary: "주어진 단어들을 가로로 정렬하고, 주어진 길이만큼 가득 채우는 방법을 찾는 문제"
+summary: '주어진 단어들을 가로로 정렬하고, 주어진 길이만큼 가득 채우는 방법을 찾는 문제'
+images:
+  - '/static/images/leetcode-grinding-guide.jpg'
 ---
 
 ## 문제
 
 [Top Interview 150 : 69. Text Jstification ](https://leetcode.com/problems/text-justification/description/?envType=study-plan-v2&envId=top-interview-150)
-처음으로 풀어보는 hard 문제이다. 
+처음으로 풀어보는 hard 문제이다.
 
 같이 스터디를 하는 분이 먼저 푸는 모습을 보고 나는 다르게 풀어보고 싶다는 생각을 하다가 도전해봤다.
 
 ## Typescript로 풀기
+
 ```ts
 function fullJustify(words: string[], maxWidth: number): string[] {
-    const result: string[] = [];
-    let tmp: string[] = [];
-    let tmpWordTotalLength = 0;  
-    let tmpWordCounter = 0;   
+  const result: string[] = []
+  let tmp: string[] = []
+  let tmpWordTotalLength = 0
+  let tmpWordCounter = 0
 
-    const initTmp = () => {
-        tmp = [];
-        tmpWordTotalLength = 0;
-        tmpWordCounter = 0;
-    };
+  const initTmp = () => {
+    tmp = []
+    tmpWordTotalLength = 0
+    tmpWordCounter = 0
+  }
 
-    /**
-     * isLastLine: true 면 마지막 줄이므로 left-justify(왼쪽 정렬) 처리
-     */
-    const flushTmp = (isLastLine: boolean) : void => {
-        if (tmp.length === 0) return;
+  /**
+   * isLastLine: true 면 마지막 줄이므로 left-justify(왼쪽 정렬) 처리
+   */
+  const flushTmp = (isLastLine: boolean): void => {
+    if (tmp.length === 0) return
 
-        // 단어가 1개이거나, 마지막 줄이면 => left-justify
-        if (tmp.length === 1 || isLastLine) {
-            // 왼쪽 정렬 시엔 단어들을 한 칸씩만 띄우고,
-            // 남는 자리는 우측에 공백을 채워넣음
-            const line = tmp.join(' ');
-            const spacesToFill = maxWidth - line.length;
-            result.push(line + ' '.repeat(spacesToFill));
-            return;
-        }
+    // 단어가 1개이거나, 마지막 줄이면 => left-justify
+    if (tmp.length === 1 || isLastLine) {
+      // 왼쪽 정렬 시엔 단어들을 한 칸씩만 띄우고,
+      // 남는 자리는 우측에 공백을 채워넣음
+      const line = tmp.join(' ')
+      const spacesToFill = maxWidth - line.length
+      result.push(line + ' '.repeat(spacesToFill))
+      return
+    }
 
-        // tmp 에 들어있는 모든 단어 길이(tmpWordTotalLength) + 총 공간 = maxWidth
-        // totalSpace = maxWidth - tmpWordTotalLength
-        // totalSpace를 분배 작업하
-        let totalSpace = maxWidth - tmpWordTotalLength;   
-        let spaceArea = tmp.length - 1; // 단어 사이 갯수
-        const baseSpace = Math.floor(totalSpace / spaceArea);
-        let extraSpace = totalSpace - baseSpace * spaceArea;
+    // tmp 에 들어있는 모든 단어 길이(tmpWordTotalLength) + 총 공간 = maxWidth
+    // totalSpace = maxWidth - tmpWordTotalLength
+    // totalSpace를 분배 작업하
+    let totalSpace = maxWidth - tmpWordTotalLength
+    let spaceArea = tmp.length - 1 // 단어 사이 갯수
+    const baseSpace = Math.floor(totalSpace / spaceArea)
+    let extraSpace = totalSpace - baseSpace * spaceArea
 
-        const buffer = tmp.map((word, idx) => {
-            if (idx < spaceArea) {
-                // 왼쪽부터 차례로 extraSpace를 1개씩 더 배정
-                const thisGap = baseSpace + (extraSpace > 0 ? 1 : 0);
-                if (extraSpace > 0) extraSpace--;
-                return word + ' '.repeat(thisGap);
-            } else {
-                // 마지막 단어는 뒤에 공백 없이 붙임
-                return word;
-            }
-        });
-        result.push(buffer.join(''));
-    };
+    const buffer = tmp.map((word, idx) => {
+      if (idx < spaceArea) {
+        // 왼쪽부터 차례로 extraSpace를 1개씩 더 배정
+        const thisGap = baseSpace + (extraSpace > 0 ? 1 : 0)
+        if (extraSpace > 0) extraSpace--
+        return word + ' '.repeat(thisGap)
+      } else {
+        // 마지막 단어는 뒤에 공백 없이 붙임
+        return word
+      }
+    })
+    result.push(buffer.join(''))
+  }
 
-    words.forEach((word, index) => {
-        if (tmpWordTotalLength + tmpWordCounter + word.length <= maxWidth) {
-            tmp.push(word);
-            tmpWordTotalLength += word.length;
-            tmpWordCounter++;
-        } else {
-            flushTmp(false);  
-            initTmp();
-            tmp.push(word);
-            tmpWordTotalLength += word.length;
-            tmpWordCounter++;
-        }
-    });
+  words.forEach((word, index) => {
+    if (tmpWordTotalLength + tmpWordCounter + word.length <= maxWidth) {
+      tmp.push(word)
+      tmpWordTotalLength += word.length
+      tmpWordCounter++
+    } else {
+      flushTmp(false)
+      initTmp()
+      tmp.push(word)
+      tmpWordTotalLength += word.length
+      tmpWordCounter++
+    }
+  })
 
-    // 마지막으로 tmp에 남아있는 단어들 처리 (마지막 줄)
-    flushTmp(true);
+  // 마지막으로 tmp에 남아있는 단어들 처리 (마지막 줄)
+  flushTmp(true)
 
-    return result;
+  return result
 }
-
 ```
-> 문제풀이
-* 2단계로 풀 생각을 했었다.
-* 1단계는 단어를 넣어서 줄을 만드는 것이고, 2단계는 주어진 MaxWidth에 맞게 재조정을 해서 가득 채우는 것이다.
-* 하지만 MaxWidth에 맞게 재조정을 하는 것이 생각보다 어려웠다.
 
-## GPT를 이용해서 C언어로 바꿔보기 
+> 문제풀이
+
+- 2단계로 풀 생각을 했었다.
+- 1단계는 단어를 넣어서 줄을 만드는 것이고, 2단계는 주어진 MaxWidth에 맞게 재조정을 해서 가득 채우는 것이다.
+- 하지만 MaxWidth에 맞게 재조정을 하는 것이 생각보다 어려웠다.
+
+## GPT를 이용해서 C언어로 바꿔보기
 
 ```c
 /**
@@ -239,19 +243,21 @@ void printJustifiedText(char** justifiedText, int numLines) {
 }
 
 ```
+
 예상은 했지만 Typescript로 푼 것보다 훨씬 복잡하고 소스코드의 길이도 길어졌다.
 
-### Q: 함수 선언할때 char* create_spaces(int count) 이렇게 선언하는 이유가 뭐야? 
+### Q: 함수 선언할때 char\* create_spaces(int count) 이렇게 선언하는 이유가 뭐야?
+
 ### A: GPT
+
 ```c
 char* create_spaces(int count)
 ```
-char*: 이 부분은 함수가 char 타입의 포인터를 반환함을 의미합니다. 즉, 이 함수는 문자 배열(문자열)의 시작 주소를 반환합니다.
 
-
-
+char\*: 이 부분은 함수가 char 타입의 포인터를 반환함을 의미합니다. 즉, 이 함수는 문자 배열(문자열)의 시작 주소를 반환합니다.
 
 ## GPT를 이용해서 C++로 바꿔보기
+
 ```c++
 class Solution {
 public:
@@ -331,7 +337,8 @@ void printJustifiedText(vector<string> justifiedText) {
 
 
 ```
-* GPT가 희한하게 배열이 비어있는 경우를 처리하는 코드를 제일 먼저 실행 되도록 추가해주었다.
+
+- GPT가 희한하게 배열이 비어있는 경우를 처리하는 코드를 제일 먼저 실행 되도록 추가해주었다.
 
 ## GPT를 이용해서 JAVA로 바꿔보기
 
@@ -422,6 +429,7 @@ class Solution {
 ```
 
 ## GPT를 이용해서 RUST로 바꿔보기
+
 ```rust
 impl Solution {
     pub fn full_justify(words: Vec<String>, max_width: i32) -> Vec<String> {
