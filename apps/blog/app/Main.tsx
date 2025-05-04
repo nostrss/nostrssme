@@ -35,7 +35,7 @@ export default function Home({ posts }) {
                     </dl>
                     <div className="space-y-5 xl:col-span-3">
                       <div className="space-y-6">
-                        <div>
+                        <div className="space-y-5">
                           <h2 className="text-2xl leading-8 font-bold tracking-tight">
                             <Link
                               href={`/blog/${slug}`}
@@ -50,15 +50,17 @@ export default function Home({ posts }) {
                             ))}
                           </div>
                           {images && images.length > 0 && (
-                            <div className="relative h-auto w-full overflow-hidden rounded-lg">
-                              <Image
-                                src={images[0]}
-                                alt={title}
-                                className="object-cover"
-                                width={1200}
-                                height={600}
-                              />
-                            </div>
+                            <Link href={`/blog/${slug}`}>
+                              <div className="relative h-auto w-full overflow-hidden rounded-lg">
+                                <Image
+                                  src={images[0]}
+                                  alt={title}
+                                  className="object-cover"
+                                  width={1200}
+                                  height={600}
+                                />
+                              </div>
+                            </Link>
                           )}
                         </div>
                         <div className="prose max-w-none text-gray-500 dark:text-gray-400">
