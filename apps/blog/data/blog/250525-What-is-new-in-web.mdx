@@ -1,0 +1,78 @@
+---
+title: '[Youtube] What is new in web'
+date: '2025-05-25'
+tags: ['google', 'web', 'baseline', 'youtube']
+draft: false
+summary: '발표자는 Baseline이라는 개념을 소개하며 웹 플랫폼의 변화 속도가 빨라지고 있음을 강조합니다. 과거에는 새로운 기능이 모든 브라우저에 적용되기까지 오랜 시간이 걸렸지만, 이제는 Newly available과 Widely available이라는 기준으로 기능의 안정적인 사용 시점을 파악할 수 있게 되었습니다. Web Platform Dashboard 및 다양한 개발 도구와의 통합을 통해 개발자들이 자신의 사용자 데이터에 기반하여 Baseline 목표 연도를 설정하고, 코드 작성 시 개별 기능의 Baseline 상태를 쉽게 확인하여 최적의 브라우저 지원 전략을 수립할 수 있도록 지원하고 있습니다. 마지막으로 Interop 프로젝트를 통해 브라우저 간 호환성을 높여 웹 개발의 편의성을 개선하고 있습니다.'
+images:
+  - 'https://img.youtube.com/vi/beYbnNT_02U/maxresdefault.jpg'
+---
+
+[![what is new in web](https://img.youtube.com/vi/beYbnNT_02U/maxresdefault.jpg)](https://www.youtube.com/watch?v=beYbnNT_02U)
+
+> 출처 : [Chrome for Developer](https://www.youtube.com/@ChromeDevs)
+
+> notebookLM을 이용해 작성되었습니다.
+
+### 배경: 빠르게 발전하는 웹 플랫폼
+
+- 웹 플랫폼은 그 어느 때보다 빠르게 발전하고 있으며, 과거 수십 년간 해결되지 않았던 개발자들의 오랜 숙제들이 최신 기능들을 통해 해결되고 있습니다.
+- 새로운 기능들이 한 브라우저에 출시된 후 모든 주요 브라우저에서 사용 가능해지기까지 걸리는 시간이 크게 단축되었습니다. CSS 기능의 경우, 가용성 확보 기간이 현저히 줄었습니다.
+- 예시: 컨테이너 쿼리는 5개월 만에, 캐스케이드 레이어는 한 달 만에 Baseline 새로 사용 가능(Baseline Newly available) 상태가 되었습니다.
+- 구글 I/O에서 언급된 많은 기능들이 단 1년 안에 Baseline 상태가 되고 있습니다.
+
+### 주요 문제점 및 Baseline 소개
+
+- 빠르게 발전하는 웹 플랫폼 환경에서 개발자들이 새로운 기능을 어떻게 활용할 수 있는지, 그리고 언제 이러한 기능들을 안심하고 사용할 수 있는지 판단하기 어렵다는 문제점이 있습니다.
+- 이러한 문제점을 해결하기 위해 Baseline 개념이 도입되었습니다.
+- Baseline Newly available: 핵심 브라우저 세트(Chrome 데스크톱 및 Android, Edge, Firefox 데스크톱 및 Android, Safari macOS 및 iOS)에 기능이 출시된 시점을 의미합니다. 이 시점부터 기능의 변경 가능성이 낮아집니다.
+- Baseline Widely available: Baseline Newly available 시점으로부터 30개월이 지난 시점을 의미합니다. 이 시점에서는 대부분의 사용자가 해당 기능을 지원하므로, 폴리필(polyfill)이나 대체(fallback) 없이 안심하고 기능을 사용할 수 있는 기준으로 제시됩니다. 이 기준은 주요 브라우저 벤더와 개발자 커뮤니티 회원들이 참여하는 Web Developer Experience Community Group에서 공동으로 제정했습니다.
+
+### Baseline 활용을 위한 데이터 및 도구
+
+- Baseline은 `웹 기능 데이터(web features data)`라는 공개 데이터 세트를 기반으로 합니다. 이 데이터는 Web DX community group에서 관리하며, 웹 플랫폼의 모든 기능을 추적하고 각 기능이 Baseline Newly available 상태가 된 날짜를 기록합니다.
+- 이 데이터는 매달 새로운 브라우저가 출시됨에 따라 업데이트되어 새로운 Baseline 기능이 신속하게 반영됩니다.
+- 웹 플랫폼 대시보드(Web Platform Dashboard): Baseline 데이터를 시각적으로 확인할 수 있는 도구입니다. 기능이 Baseline Newly available 상태가 된 날짜별로 정렬하여 볼 수 있으며, 개별 기능의 각 브라우저 구현 날짜도 확인할 수 있습니다. 곧 통계 페이지가 추가되어 Baseline 기능 수 및 브라우저별 누락 기능 등을 확인할 수 있습니다.
+- RUM Archive 통합: RUM(Real User Monitoring) 데이터를 통해 사용자의 브라우저 지원 수준을 파악하고, 특정 Baseline 연도를 기준으로 몇 퍼센트의 사용자가 모든 기능을 지원하는지 확인할 수 있습니다. 이를 통해 프로젝트에 적합한 Baseline 연도를 선택할 수 있습니다. 2022년 Baseline은 트래킹된 사용자의 98% 이상이 지원하며, 2023년 Baseline은 93%의 사용자가 지원합니다. 국가별 필터링 기능도 제공됩니다.
+- RUMvision 통합: RUMvision과 같은 상용 RUM 제품에 Baseline 데이터가 통합되어 개별 사이트 사용자 데이터를 기반으로 최적의 Baseline 연도를 식별하고 특정 기능의 사용자 지원 수준을 상세하게 확인할 수 있습니다. 이를 통해 개발자는 폴리필 제거 등 최적화 기회를 포착할 수 있습니다.
+- 인용: RUMvision은 `98% 이상의 사용자가 지원`하는 Lazy Loading 기능을 확인하고 lazysizes 플러그인을 제거하고 브라우저 표준 Lazy Loading으로 대체한 사례를 언급했습니다.
+- Google Analytics 데이터 활용 도구: Google Analytics 데이터를 가져와 사용자 기반에 가장 적합한 Baseline 목표를 식별하는 도구가 제공됩니다.
+- CMS 및 개발자 플랫폼 통합: Netlify와 같은 플랫폼에서는 Baseline 지원 연도를 표시하는 확장 기능이 출시되었으며, Cloudflare 및 Contentsquare에서도 Baseline 데이터 통합을 계획하고 있습니다.
+- Baseline browser mapping module: 브라우저 버전과 Baseline 연도 및 Widely available 상태 간의 매핑 데이터를 제공하는 도구입니다. 서버 측 JavaScript 환경 또는 JSON/CSV 파일 형태로 활용 가능하며, 핵심 Baseline 브라우저 외에도 Samsung Internet, Opera, UC Browser, Android WebView와 같은 다운스트림 브라우저 매핑 정보도 포함합니다.
+
+### 개발 워크플로우에 Baseline 통합
+
+- Baseline 데이터를 통해 개별 기능의 지원 여부를 MDN, web.dev, Can I Use 등 다양한 곳에서 확인할 수 있습니다. MDN은 페이지 상단에 Baseline 정보를 표시하며, Can I Use는 많은 기능 페이지에 Baseline 정보를 추가했습니다.
+- 개발 도구 통합: 개발 워크플로우에 Baseline을 통합하여 코딩 중에도 즉각적인 피드백을 받을 수 있도록 다양한 도구들이 Baseline 지원을 추가하고 있습니다.
+- 코드 컴파일 도구 (Babel, PostCSS): browserslist-config-baseline 패키지를 사용하여 Browserslist 대상을 Baseline 용어(widely available, Baseline 연도)로 설정할 수 있습니다. 이를 통해 불필요한 폴리필 또는 벤더 접두사 추가를 방지할 수 있습니다.
+- 린터 (ESLint, Stylelint, HTML ESLint): ESLint for CSS의 use-baseline 규칙, Stylelint plugin/use-baseline 플러그인, community plugin인 HTML ESLint를 통해 설정한 Baseline 목표보다 새로운 기능 사용 시 경고를 받을 수 있습니다. @supports 블록 내에서 사용된 기능은 기본적으로 경고하지 않습니다.
+- IDE (VSCode, WebStorm): VSCode에서는 Baseline 데이터가 호버 카드에 통합되어 CSS 속성, HTML 요소 및 속성에 대한 Baseline 상태 정보를 즉시 확인할 수 있습니다. JetBrains의 WebStorm에서도 지원됩니다.
+
+### Baseline 활용 전략
+
+- Baseline Widely available 또는 특정 Baseline 연도 목표 설정: 사이트 및 사용자 특성에 맞춰 적절한 Baseline 목표를 설정하고, 해당 Baseline에 포함된 모든 기능을 자신 있게 사용할 수 있습니다.
+- 진보적 향상(Progressive Enhancement) 및 폴리필: 모든 기능이 Baseline 목표를 충족하지는 않지만, 사용자 경험에 큰 영향을 미치지 않는 진보적 향상 기능이나 폴리필을 사용하여 조기에 새로운 기능을 도입할 수 있습니다.
+- 인용: Text Wrap Balance 기능은 Baseline 2024이지만, 지원되지 않는 브라우저에서는 기존대로 텍스트가 표시되므로 사용에 부담이 없습니다.
+  > Unsupported browsers are going to just ignore that instruction. Nothing terrible is going to happen.
+- RUM 데이터를 통해 폴리필 코드를 제거할 적절한 시점을 파악할 수 있습니다.
+
+### Interop 2025 및 향후 전망
+
+- Interop: 주요 브라우저 벤더들이 협력하여 개발자들의 주요 고충 사항을 해결하고 기능을 상호 운용 가능하게 만드는 연례 이니셔티브입니다. Interop 프로젝트에 포함된 기능은 Baseline Newly available 상태가 될 가능성이 높습니다.
+- Interop 2024 주요 성과: @property, font-size-adjust, requestVideoFrameCallback, scrollbar-styling, transition-behavior, text-wrap-balance, popover 등의 기능이 Baseline 상태가 되었습니다.
+  - Interop 2025 주요 기능 (향후 Baseline Newly available 예상):Sideways writing modes (sideways-rl, sideways-lr): 세로 쓰기 레이아웃을 위한 CSS writing-mode 속성 값입니다. 이미 Baseline Newly available 상태가 되었습니다.
+  - Anchor Positioning: 요소의 위치를 다른 요소(앵커)에 연결하여 배치하는 기능입니다. 툴팁 등에서 JavaScript 없이 정확한 배치를 구현할 수 있습니다. Chrome 125에 출시되었으며 Interop 2025에 포함됩니다.
+  - LCP 및 INP (Core Web Vitals): 웹 사이트 성능 측정의 핵심 지표인 Largest Contentful Paint와 Interaction to Next Paint를 모든 브라우저에서 측정 가능하게 하는 Largest Contentful Paint API 및 Event Timing API 구현이 포함됩니다.
+  - Details Element 개선: details 요소 관련 기능 개선입니다. content-visibility를 이용한 내용 숨김, ::marker 및 ::details-content 가상 요소 스타일링, 페이지 찾기 기능 연동, hidden="until-found" 속성 지원 등이 포함됩니다.
+  - CSS Scope Rule (@scope): CSS 선택자의 적용 범위를 특정 DOM 하위 트리로 제한하는 규칙입니다.
+  - Scrollend Event: 스크롤이 완전히 멈춘 시점을 신뢰성 있게 감지할 수 있는 이벤트입니다. 기존의 setTimeout 기반 감지 방식보다 정확합니다.
+  - View Transitions (same-document): 단일 페이지 애플리케이션(SPA)에서 부드러운 페이지 전환 애니메이션을 구현하는 기능입니다. View Transition Classes도 포함됩니다.
+- Interop 2025 대시보드를 통해 프로젝트 진행 상황을 추적할 수 있습니다.
+- Baseline 데이터의 백필(backfilling) 작업이 완료되어 개발 도구 개발이 활발해지고 있습니다.
+- 앞으로 더 많은 도구와 제품에서 Baseline 데이터가 통합될 것으로 예상됩니다. (예: 웹 에이전시, 사이트 빌더, 프레임워크)
+
+### 결론
+
+Baseline은 웹 개발자들이 빠르게 발전하는 웹 플랫폼 기능을 언제 안심하고 사용할 수 있는지에 대한 명확한 기준을 제시하고, 다양한 데이터 및 도구 통합을 통해 개발 워크플로우를 개선하고 있습니다.
+
+이를 통해 개발자들은 새로운 기능을 더 빨리, 더 자신 있게 프로젝트에 도입하여 사용자 경험을 향상시킬 수 있습니다. Google I/O에서 소개되는 새로운 기능들도 Baseline을 통해 언제 실무에 적용 가능할지 추적하고 판단할 수 있게 됩니다.
