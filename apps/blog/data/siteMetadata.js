@@ -15,9 +15,9 @@ const siteMetadata = {
   // set to true if you want a navbar fixed to the top
   stickyNav: false,
   analytics: {
-    // googleAnalytics: {
-    //   googleAnalyticsId: '', // e.g. G-XXXXXXX
-    // },
+    googleAnalytics: {
+      googleAnalyticsId: 'G-VYKDE95HJ6', // e.g. G-XXXXXXX
+    },
   },
   newsletter: {
     // supports mailchimp, buttondown, convertkit, klaviyo, revue, emailoctopus, beehive
