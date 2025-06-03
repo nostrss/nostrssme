@@ -1,8 +1,9 @@
 {
-  "google": 1,
-  "web": 1,
+  "google": 2,
+  "web": 2,
+  "ai": 1,
+  "youtube": 3,
   "animation": 1,
-  "youtube": 2,
   "theo": 1,
   "nextjs": 1
 }
