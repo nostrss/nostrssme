@@ -1,11 +1,11 @@
 {
-  "theo": 1,
-  "nextjs": 1,
-  "youtube": 5,
   "google": 4,
   "web": 4,
-  "animation": 1,
+  "baseline": 1,
+  "youtube": 5,
   "ai": 2,
   "agents": 1,
-  "baseline": 1
+  "animation": 1,
+  "theo": 1,
+  "nextjs": 1
 }
