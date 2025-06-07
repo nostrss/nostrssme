@@ -1,0 +1,73 @@
+---
+title: '[Typescript] 함수 타입 표현식과 호출 시그니쳐 '
+date: '2025-06-06'
+tags: ['typescript', 'function']
+draft: false
+summary: 'Typescript에서 함수의 타입을 정의하는 방법을 알아보자'
+images:
+  - '/static/images/logo-typescript.png'
+---
+
+## Function Type Expressions(함수 타입 표현식)
+
+[함수타입표현식 문서 바로가기](https://www.typescriptlang.org/docs/handbook/2/functions.html#function-type-expressions)
+
+만약 아래와 같이 여러개의 함수가 있다고 가정해보자
+
+```ts
+const asyncFunc1 = async (): Promise<void> => {}
+const asyncFunc2 = async (): Promise<void> => {}
+const asyncFunc3 = async (): Promise<void> => {}
+const asyncFunc4 = async (): Promise<void> => {}
+```
+
+여러개의 비동기 함수가 있는데, 자세히 보면 모두 `Promise<void>`를 반환하고 있다.
+아무 생각없이 모든 함수의 Return 타입을 매번 반복적으로 작성해주고 있었는데, 과연 Return 타입을 위와 같이 매번 작성해야만 하는걸까?
+
+함수도 변수처럼 타입을 미리 정의해두고, 이를 재사용할 수는 없을까?
+
+함수의 타입을 미리 정의하는 방법중에 하나가 바로 `함수 타입 표현식`이다.
+
+위의 코드는 `함수 타입 표현식`을 사용하여 아래와 같이 간단하게 표현할 수 있다.
+
+```ts
+type AsyncVoidFunction = () => Promise<void>
+const asyncFunc1: AsyncVoidFunction = async () => {}
+const asyncFunc2: AsyncVoidFunction = async () => {}
+const asyncFunc3: AsyncVoidFunction = async () => {}
+const asyncFunc4: AsyncVoidFunction = async () => {}
+```
+
+이렇게 하면 `AsyncVoidFunction` 타입을 재사용할 수 있어, 코드의 중복을 줄이고 가독성을 높일 수 있다.
+
+## Call Signatures(호출 시그니쳐)
+
+[호출 시그니쳐 문서 바로가기](https://www.typescriptlang.org/docs/handbook/2/functions.html#call-signatures)
+
+호출 시그니쳐는 함수의 타입을 정의하는 또 다른 방법이다. 함수의 매개변수와 반환 타입을 명시적으로 정의할 수 있다
+
+함수 타입 표현식과 유사하지만, 함수 타입 표현식 문법은 프로퍼티를 정의하는 것을 허락하지 않는다.
+
+하지만 호출 시그니처는 프로퍼티도 가질 수 있다. 만약 우리가 호출 가능하면서 프로퍼티를 가진 무언가를 설명하려고 하면, 객체 타입에 호출 시그니처 를 사용하여 표현할 수 있다.
+
+아래의 예시를 보자.
+
+```ts
+type NamedOperation = {
+  (a: number, b: number): number // 호출 시그니처
+  name: string // 추가 프로퍼티
+}
+```
+
+`NamedOperation` 타입은 두 개의 숫자를 받아서 숫자를 반환하는 함수와 `name`이라는 문자열 프로퍼티를 가진 객체를 정의하고 있다.
+
+실제 사용 예시는 다음과 같다.
+
+```ts
+const add: NamedOperation = (a, b) => a + b
+add.name = 'Addition'
+console.log(add(2, 3)) // 5
+console.log(add.name) // 'Addition'
+```
+
+프로퍼티의 경우 추가적인 정보를 담아서 이 함수를 사용하는 다음 개발자에게 추가적인 정보를 제공하는데 사용할 수 있지 않을까 생각해본다.
