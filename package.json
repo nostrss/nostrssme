@@ -4,8 +4,10 @@
   "scripts": {
     "build": "turbo run build",
     "build:blog": "turbo run build --filter blog",
+    "build:go": "turbo run build --filter go",
     "dev": "turbo run dev",
     "dev:blog": "turbo run dev --filter blog",
+    "dev:go": "turbo run dev --filter go",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
