@@ -12,7 +12,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
-    "test:llm": "turbo run test --filter llm"
+    "test:llm": "turbo run test --filter llm",
+    "test:watch:llm": "turbo run test:watch --filter llm"
   },
   "devDependencies": {
     "prettier": "^3.5.3",
