@@ -11,7 +11,7 @@ export default function GoBoardSettings({
       <div>
         <label
           htmlFor='board-size-select'
-          className='mr-2 text-base md:text-lg'
+          className='mr-2 text-base md:text-lg text-black'
         >
           바둑판 크기:
         </label>
@@ -19,7 +19,7 @@ export default function GoBoardSettings({
           id='board-size-select'
           value={boardSize}
           onChange={handleBoardSizeChange}
-          className='p-2 border rounded-md bg-white text-base md:text-lg'
+          className='p-2 border rounded-md bg-white text-base md:text-lg text-black '
         >
           {Array.from(
             { length: BOARD.SIZE.MAX - BOARD.SIZE.MIN + 1 },
@@ -31,7 +31,7 @@ export default function GoBoardSettings({
           ))}
         </select>
       </div>
-      <p className='text-base md:text-lg ml-4'>
+      <p className='text-base md:text-lg ml-4 text-black'>
         현재 차례:
         <span className='font-bold'>
           {currentPlayer === 'black' ? '흑' : '백'}
