@@ -6,6 +6,7 @@ import GoBoard from '@/components/Go/GoBoard'
 import { Player } from '@/types'
 import { BOARD } from '@/constants/go'
 import { getGroupInfo, getNeighbors } from '@/utils/go'
+import GameInfo from '@/components/Go/GameInfo'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -13,6 +14,8 @@ export default function Home() {
     create2DArray(BOARD.SIZE.DEFAULT, BOARD.SIZE.DEFAULT, 0)
   )
   const [currentPlayer, setCurrentPlayer] = useState<Player>('black')
+  const [blackCaptured, setBlackCaptured] = useState(0)
+  const [whiteCaptured, setWhiteCaptured] = useState(0)
 
   const getPlayerStoneValue = (currentPlayer: Player) => {
     return currentPlayer === 'black' ? 1 : 2
@@ -51,6 +54,14 @@ export default function Home() {
 
     capturedStones.forEach(([r, c]) => (newBoard[r]![c] = 0))
 
+    if (capturedStones.length > 0) {
+      if (currentPlayer === 'black') {
+        setBlackCaptured(prev => prev + capturedStones.length)
+      } else {
+        setWhiteCaptured(prev => prev + capturedStones.length)
+      }
+    }
+
     const { liberties: ownLiberties } = getGroupInfo(
       rowIndex,
       colIndex,
@@ -77,7 +88,11 @@ export default function Home() {
       <GameSettings
         boardSize={boardSize}
         handleBoardSizeChange={handleBoardSizeChange}
+      />
+      <GameInfo
         currentPlayer={currentPlayer}
+        blackCaptured={blackCaptured}
+        whiteCaptured={whiteCaptured}
       />
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
     </div>

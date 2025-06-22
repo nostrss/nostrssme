@@ -5,7 +5,6 @@ export type stoneColorClassType = 'bg-black' | 'bg-white' | 'bg-transparent'
 export interface GameSettingsProps {
   boardSize: number
   handleBoardSizeChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
-  currentPlayer: Player
 }
 
 export interface GoBoardProps {
@@ -20,4 +19,10 @@ export interface GoBoardStoneProps {
 export interface GoCellProps {
   cell: number
   onClick: () => void
+}
+
+export interface GameInfoProps {
+  currentPlayer: Player
+  blackCaptured: number
+  whiteCaptured: number
 }

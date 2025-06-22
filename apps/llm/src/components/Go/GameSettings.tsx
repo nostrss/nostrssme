@@ -3,7 +3,6 @@ import { GameSettingsProps } from '@/types'
 
 export default function GoBoardSettings({
   boardSize,
-  currentPlayer,
   handleBoardSizeChange,
 }: GameSettingsProps) {
   return (
@@ -31,12 +30,6 @@ export default function GoBoardSettings({
           ))}
         </select>
       </div>
-      <p className='text-base md:text-lg ml-4 text-black'>
-        현재 차례:
-        <span className='font-bold'>
-          {currentPlayer === 'black' ? '흑' : '백'}
-        </span>
-      </p>
     </div>
   )
 }
