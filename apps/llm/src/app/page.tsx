@@ -5,6 +5,7 @@ import GameSettings from '@/components/Go/GameSettings'
 import GoBoard from '@/components/Go/GoBoard'
 import { Player } from '@/types'
 import { BOARD } from '@/constants/go'
+import { getGroupInfo, getNeighbors } from '@/utils/go'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -22,51 +23,6 @@ export default function Home() {
     setCurrentPlayer('black')
   }, [boardSize])
 
-  const getNeighbors = (r: number, c: number, size: number) => {
-    return [
-      [r - 1, c],
-      [r + 1, c],
-      [r, c - 1],
-      [r, c + 1],
-    ].filter(([nr, nc]) => nr >= 0 && nr < size && nc >= 0 && nc < size)
-  }
-
-  const getGroupInfo = (
-    startRow: number,
-    startCol: number,
-    board: number[][]
-  ) => {
-    const color = board[startRow]?.[startCol]
-    if (color === 0 || color === undefined) {
-      return { stones: [], liberties: 0 }
-    }
-
-    const stones: [number, number][] = []
-    const liberties = new Set<string>()
-    const queue: [number, number][] = [[startRow, startCol]]
-    const visited = new Set<string>([`${startRow},${startCol}`])
-
-    while (queue.length > 0) {
-      const [r, c] = queue.shift()!
-      stones.push([r, c])
-
-      const neighbors = getNeighbors(r, c, board.length)
-      for (const [nr, nc] of neighbors) {
-        const neighborKey = `${nr},${nc}`
-        const neighborColor = board[nr]?.[nc]
-
-        if (neighborColor === 0) {
-          liberties.add(neighborKey)
-        } else if (neighborColor === color && !visited.has(neighborKey)) {
-          visited.add(neighborKey)
-          queue.push([nr, nc])
-        }
-      }
-    }
-
-    return { stones, liberties: liberties.size }
-  }
-
   const handleCellClick = (rowIndex: number, colIndex: number) => {
     if (goBoard[rowIndex]![colIndex] !== 0) {
       console.log('이곳에는 이미 돌이 놓여있습니다.')
@@ -81,6 +37,10 @@ export default function Home() {
     let capturedStones: [number, number][] = []
 
     for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
+      if (r == null || c == null) {
+        continue
+      }
+
       if (newBoard[r]?.[c] === opponentStoneValue) {
         const { stones, liberties } = getGroupInfo(r, c, newBoard)
         if (liberties === 0) {
