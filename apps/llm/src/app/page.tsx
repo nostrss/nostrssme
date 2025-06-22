@@ -24,6 +24,8 @@ export default function Home() {
   useEffect(() => {
     setGoBoard(create2DArray(boardSize, boardSize, 0))
     setCurrentPlayer('black')
+    setBlackCaptured(0)
+    setWhiteCaptured(0)
   }, [boardSize])
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
