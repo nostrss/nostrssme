@@ -1,4 +1,4 @@
-import { GoBoardStoneProps } from '@/app/types'
+import { GoBoardStoneProps } from '@/types'
 
 export default function GoBoardStone({ stoneColorClass }: GoBoardStoneProps) {
   return (

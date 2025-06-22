@@ -1,5 +1,5 @@
-import GoBoardCell from '@/app/components/Go/GoBoardCell'
-import { GoBoardProps } from '@/app/types'
+import GoBoardCell from '@/components/Go/GoBoardCell'
+import { GoBoardProps } from '@/types'
 
 export default function GoBoard({ goBoard, handleCellClick }: GoBoardProps) {
   return (

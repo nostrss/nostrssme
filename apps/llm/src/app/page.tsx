@@ -1,10 +1,11 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { create2DArray } from '@repo/utils'
-import GameSettings from '@/app/components/Go/GameSettings'
-import GoBoard from '@/app/components/Go/GoBoard'
-import { Player } from '@/app/types'
-import { BOARD } from '@/app/constants/go'
+import GameSettings from '@/components/Go/GameSettings'
+import GoBoard from '@/components/Go/GoBoard'
+import { Player } from '@/types'
+import { BOARD } from '@/constants/go'
+import { getGroupInfo, getNeighbors } from '@/utils/go'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -28,14 +29,39 @@ export default function Home() {
       return
     }
 
-    setGoBoard(prevBoard => {
-      // 상태 불변성을 위해 깊은 복사
-      const newBoard = prevBoard.map(row => [...row])
-      newBoard[rowIndex]![colIndex] = getPlayerStoneValue(currentPlayer)
-      // TODO: 돌을 따내는 로직(따먹기)을 여기에 추가해야 합니다.
-      return newBoard
-    })
+    const newBoard = goBoard.map(row => [...row])
+    const playerStoneValue = getPlayerStoneValue(currentPlayer)
+    newBoard[rowIndex]![colIndex] = playerStoneValue
 
+    const opponentStoneValue = playerStoneValue === 1 ? 2 : 1
+    let capturedStones: [number, number][] = []
+
+    for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
+      if (r == null || c == null) {
+        continue
+      }
+
+      if (newBoard[r]?.[c] === opponentStoneValue) {
+        const { stones, liberties } = getGroupInfo(r, c, newBoard)
+        if (liberties === 0) {
+          capturedStones = capturedStones.concat(stones)
+        }
+      }
+    }
+
+    capturedStones.forEach(([r, c]) => (newBoard[r]![c] = 0))
+
+    const { liberties: ownLiberties } = getGroupInfo(
+      rowIndex,
+      colIndex,
+      newBoard
+    )
+    if (ownLiberties === 0 && capturedStones.length === 0) {
+      console.log('자살수는 둘 수 없습니다.')
+      return
+    }
+
+    setGoBoard(newBoard)
     setCurrentPlayer(prevPlayer => (prevPlayer === 'black' ? 'white' : 'black'))
   }
 
