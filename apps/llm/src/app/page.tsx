@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { create2DArray } from '@repo/utils'
-import GoBoardCell from '@/app/components/Go/GoBoardCell'
-import GoBoardSettings from '@/app/components/Go/GoBoardSettings'
+import GameSettings from '@/app/components/Go/GameSettings'
+import GoBoard from '@/app/components/Go/GoBoard'
 import { Player } from '@/app/types'
 import { BOARD } from '@/app/constants/go'
 
@@ -48,24 +48,12 @@ export default function Home() {
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
-      <GoBoardSettings
+      <GameSettings
         boardSize={boardSize}
         handleBoardSizeChange={handleBoardSizeChange}
         currentPlayer={currentPlayer}
       />
-      <div className='flex flex-col bg-amber-200 p-4 md:p-6 rounded-lg shadow-lg w-full max-w-md md:max-w-xl lg:max-w-3xl aspect-square'>
-        {goBoard.map((row, rowIndex) => (
-          <div key={rowIndex} className='flex flex-1'>
-            {row.map((cell, colIndex) => (
-              <GoBoardCell
-                key={colIndex}
-                cell={cell}
-                onClick={() => handleCellClick(rowIndex, colIndex)}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
+      <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
     </div>
   )
 }

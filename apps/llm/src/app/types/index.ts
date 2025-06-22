@@ -1,9 +1,23 @@
-import { BOARD } from '@/app/constants/go'
-
 export type Player = 'black' | 'white'
 
 export type stoneColorClassType = 'bg-black' | 'bg-white' | 'bg-transparent'
 
+export interface GameSettingsProps {
+  boardSize: number
+  handleBoardSizeChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
+  currentPlayer: Player
+}
+
+export interface GoBoardProps {
+  goBoard: number[][]
+  handleCellClick: (rowIndex: number, colIndex: number) => void
+}
+
 export interface GoBoardStoneProps {
   stoneColorClass: stoneColorClassType
+}
+
+export interface GoCellProps {
+  cell: number
+  onClick: () => void
 }

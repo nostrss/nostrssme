@@ -1,14 +1,11 @@
 import { BOARD } from '@/app/constants/go'
+import { GameSettingsProps } from '@/app/types'
 
 export default function GoBoardSettings({
   boardSize,
   currentPlayer,
   handleBoardSizeChange,
-}: {
-  boardSize: number
-  handleBoardSizeChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
-  currentPlayer: 'black' | 'white'
-}) {
+}: GameSettingsProps) {
   return (
     <div className='mb-4 flex flex-row justify-center items-center'>
       <div>

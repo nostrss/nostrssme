@@ -3,11 +3,7 @@ import {
   GoBoardVerticalLine,
 } from '@/app/components/Go/GoBoardLine'
 import GoBoardStone from '@/app/components/Go/GoBoardStone'
-
-interface GoCellProps {
-  cell: number
-  onClick: () => void
-}
+import { GoCellProps } from '@/app/types'
 
 const GoCell = ({ cell, onClick }: GoCellProps) => {
   const handleStoneClass = (cell: number) => {
