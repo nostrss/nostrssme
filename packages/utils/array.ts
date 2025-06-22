@@ -5,8 +5,7 @@
  * @param value 배열을 채울 값
  * @returns 지정된 값으로 채워진 2차원 배열
  */
+
 export function create2DArray<T>(rows: number, cols: number, value: T): T[][] {
-  return Array(rows)
-    .fill(null)
-    .map(() => Array(cols).fill(value))
+  return Array.from({ length: rows }, () => Array(cols).fill(value))
 }
