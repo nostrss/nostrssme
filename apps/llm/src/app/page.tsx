@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { create2DArray } from '@repo/utils'
-import GameSettings from '@/app/components/Go/GameSettings'
-import GoBoard from '@/app/components/Go/GoBoard'
-import { Player } from '@/app/types'
-import { BOARD } from '@/app/constants/go'
+import GameSettings from '@/components/Go/GameSettings'
+import GoBoard from '@/components/Go/GoBoard'
+import { Player } from '@/types'
+import { BOARD } from '@/constants/go'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)

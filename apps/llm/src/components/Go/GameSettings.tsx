@@ -1,5 +1,5 @@
-import { BOARD } from '@/app/constants/go'
-import { GameSettingsProps } from '@/app/types'
+import { BOARD } from '@/constants/go'
+import { GameSettingsProps } from '@/types'
 
 export default function GoBoardSettings({
   boardSize,

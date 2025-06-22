@@ -1,9 +1,9 @@
 import {
   GoBoardRowLine,
   GoBoardVerticalLine,
-} from '@/app/components/Go/GoBoardLine'
-import GoBoardStone from '@/app/components/Go/GoBoardStone'
-import { GoCellProps } from '@/app/types'
+} from '@/components/Go/GoBoardLine'
+import GoBoardStone from '@/components/Go/GoBoardStone'
+import { GoCellProps } from '@/types'
 
 const GoCell = ({ cell, onClick }: GoCellProps) => {
   const handleStoneClass = (cell: number) => {
