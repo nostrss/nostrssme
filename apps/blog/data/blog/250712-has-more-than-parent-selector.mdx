@@ -1,0 +1,239 @@
+---
+title: ':has() is more than a parent selector'
+date: '2025-07-11'
+tags: ['youtube', 'css', 'has', 'selector']
+draft: false
+summary: 'Kevin Powell YouTube 채널의 동영상 스크립트 발췌본은 CSS의 :has() 의사 클래스 선택기에 대한 심층적인 탐구를 제공합니다. 이 동영상은 :has()가 단순히 부모 선택기가 아니라 관계형 선택기로서 훨씬 더 다양한 기능을 수행할 수 있음을 보여줍니다. 제시된 예시를 통해 :has() 선택기를 사용하여 특정 자식을 가진 부모 요소를 선택하거나, 지정된 요소를 포함하는 요소 바로 뒤에 오는 요소를 선택하고, 이전 요소를 기준으로 요소를 선택하는 방법 등 다양한 활용법을 시연합니다. 또한 has 선택기를 중첩할 수 없다는 한계와 브라우저 지원 현황에 대해서도 언급하며, 다수의 형제를 가진 요소나 특정 유형의 요소를 선택하는 등 보다 복잡한 시나리오에서의 활용법을 소개합니다. 궁극적으로 이 동영상은 :has() 선택기가 다양한 CSS 레이아웃 및 스타일링 문제에 대한 강력하고 유연한 솔루션임을 강조합니다.'
+images:
+  - 'https://img.youtube.com/vi/cxSowU9sDdU/maxresdefault.jpg'
+---
+
+[![:has() is more than a parent selector
+](https://img.youtube.com/vi/cxSowU9sDdU/maxresdefault.jpg)](https://www.youtube.com/watch?v=cxSowU9sDdU)
+
+> 출처 : [Kevin Powell](https://www.youtube.com/@KevinPowell)
+
+> notebookLM을 이용해 작성되었습니다.
+
+---
+
+# CSS의 숨겨진 보석: `:has()` 선택자를 파헤치다 (부모 선택자 그 이상!)
+
+안녕하세요! 오늘은 CSS의 강력한 새로운 기능 중 하나인 `:has()` 의사 선택자에 대해 이야기해보려고 합니다. 많은 분들이 `:has()`를 단순히 '부모 선택자'라고 알고 계시지만, 사실 **관계형 선택자(relational selector)**라는 본명이 말해주듯이 훨씬 더 많은 일을 할 수 있습니다. 이 포스팅에서는 `:has()`가 무엇이며, 어떤 놀라운 기능들을 제공하는지 자세히 알아보겠습니다!
+
+## `:has()` 선택자란 무엇인가요?
+
+기존 CSS에서는 특정 요소의 자식을 선택하거나, 특정 요소 다음에 오는 형제 요소를 선택하는 등의 조합자가 있었지만, **특정 요소가 특정 자식이나 후손을 가지고 있는지를 기반으로 부모 요소를 선택하거나, 특정 요소 이전에 오는 요소를 선택하는 것은 불가능했습니다.** 바로 이 지점에서 `:has()`가 등장하여 이러한 제약을 해결해 줍니다.
+
+간단히 말해, `:has()`는 **괄호 안에 명시된 선택자를 만족하는 요소를 포함하는 다른 요소를 선택**할 수 있게 해줍니다.
+
+## `:has()`의 놀라운 기능들 (예시와 함께)
+
+`:has()`는 단순한 부모 선택을 넘어 다양한 상황에서 유용하게 활용될 수 있습니다.
+
+### 1. 특정 자식을 가진 부모 요소 선택
+
+가장 기본적인 사용법입니다. 예를 들어, `pink` 클래스를 가진 요소를 포함하는 부모 요소를 선택하여 스타일을 적용할 수 있습니다.
+
+**HTML:**
+
+```html
+<div class="parent-element">
+  <p class="pink">이 요소는 pink 클래스를 가지고 있습니다.</p>
+</div>
+<div class="parent-element">
+  <p>이 요소는 pink 클래스를 가지고 있지 않습니다.</p>
+</div>
+```
+
+**CSS:**
+
+```css
+.parent-element:has(.pink) {
+  /* .pink 클래스를 가진 자손을 포함하는 .parent-element를 선택합니다. */
+  border: 2px solid white; /* 예시로 흰색 테두리를 추가합니다. */
+}
+```
+
+이는 `green`이나 `ghost`와 같은 다른 클래스에도 동일하게 적용할 수 있습니다.
+
+### 2. 특정 요소를 포함하는 요소 바로 뒤에 오는 요소 선택
+
+`+` (인접 형제 조합자)와 함께 사용하여 특정 요소를 포함하는 요소 _바로 뒤에 오는_ 요소를 선택할 수 있습니다. `~` (일반 형제 조합자)를 사용하면 _뒤에 오는 모든_ 형제 요소를 선택할 수 있습니다.
+
+**HTML:**
+
+```html
+<div class="item-container">
+  <div class="item">Item 1</div>
+  <div class="item pink-target">Item 2 (pink)</div>
+  <div class="item">Item 3</div>
+  <div class="item">Item 4</div>
+</div>
+```
+
+**CSS (`+ *`):**
+
+```css
+/* .pink-target을 가진 요소를 포함하는 부모 요소 바로 뒤에 오는 모든 요소를 선택합니다. */
+.item-container:has(.pink-target) + .item-container {
+  background-color: lightblue;
+}
+
+/* 또는 .pink-target 바로 뒤의 형제 요소를 선택: */
+.pink-target + .item {
+  border: 2px dashed orange; /* Item 3에 적용됩니다. */
+}
+```
+
+**CSS (`~ *`):**
+
+```css
+/* .pink-target 뒤에 오는 모든 형제 요소를 선택합니다. */
+.pink-target ~ .item {
+  background-color: #eee; /* Item 3과 Item 4에 적용됩니다. */
+}
+```
+
+### 3. 특정 요소를 포함하는 요소 이전에 오는 요소 선택
+
+CSS에서 이전에 오는 요소를 선택하는 것은 전통적으로 어려웠습니다. 하지만 `:has()`를 사용하면 간접적으로 이를 해결할 수 있습니다. 소스에서는 이러한 선택자에 주석을 달아 설명을 추가할 것을 권장합니다.
+
+**HTML:**
+
+```html
+<div class="parent-element">Parent 1</div>
+<div class="parent-element">Parent 2 (Has Pink) <span class="pink"></span></div>
+<div class="parent-element">Parent 3</div>
+```
+
+**CSS:**
+
+```css
+.parent-element:has(+ .parent-element:has(.pink)) {
+  /* .pink를 가진 .parent-element 바로 앞에 오는 .parent-element를 선택합니다. */
+  /* 즉, "Parent 1"이 선택됩니다. */
+  border: 2px solid purple;
+}
+
+/* 더 일반적인 형태 (소스에서 설명된): */
+.parent-element:has(+ *:has(.pink)) {
+  /* .pink를 자손으로 포함하는 어떤 요소 바로 앞에 오는 .parent-element를 선택 */
+  /* 이 경우에도 "Parent 1"이 선택됩니다. */
+  outline: 2px dotted blue;
+}
+```
+
+이는 특정 요소를 자손으로 포함하는 다른 요소 _뒤에 오는_ 요소를 먼저 찾은 다음, 그 요소 _앞에 오는_ 요소를 선택하는 방식입니다.
+
+### 4. 특정 자식을 가진 부모 요소의 _모든 직계 자식_ 선택 (특정 자식 제외)
+
+`:has()`와 `>`(직계 자식 선택자), 그리고 `:not()` 의사 클래스를 조합하여 사용할 수 있습니다.
+
+**HTML:**
+
+```html
+<div class="parent-container">
+  <div class="child-item">Child 1</div>
+  <div class="child-item pink">Child 2 (Pink)</div>
+  <div class="child-item">Child 3</div>
+</div>
+
+<div class="parent-container">
+  <div class="child-item">Child A</div>
+  <div class="child-item">Child B</div>
+</div>
+```
+
+**CSS:**
+
+```css
+.parent-container:has(> .pink) > *:not(.pink) {
+  /* .pink를 직계 자식으로 가진 .parent-container의 .pink가 아닌 모든 직계 자식의 배경색을 변경합니다. */
+  /* "Child 1"과 "Child 3"에 적용됩니다. */
+  background-color: #f0f0f0;
+  border: 1px solid gray;
+}
+```
+
+이 예시는 부모 요소가 `pink` 클래스를 가진 직계 자식을 가지고 있다면, 그 부모 요소의 모든 직계 자식 중에서 `pink` 클래스를 가진 요소를 제외한 나머지 요소들의 배경색을 변경하는 것을 보여줍니다.
+
+### 5. 자식의 개수에 따라 요소 스타일링
+
+`:nth-child()` 또는 `:nth-last-child()`와 함께 사용하여 자식 요소의 개수에 따라 부모 요소를 스타일링할 수 있습니다. 예를 들어, 4개 이상의 자식을 가진 요소를 선택할 수 있습니다.
+
+**HTML:**
+
+```html
+<div class="card-list">
+  <div class="card">Card 1</div>
+  <div class="card">Card 2</div>
+  <div class="card">Card 3</div>
+  <div class="card">Card 4</div>
+</div>
+
+<div class="card-list">
+  <div class="card">Card A</div>
+  <div class="card">Card B</div>
+</div>
+```
+
+**CSS:**
+
+```css
+.card-list:has(.card:nth-child(4)) {
+  /* 자식이 4개 이상인 .card-list 요소를 선택합니다. */
+  /* 첫 번째 .card-list에 적용됩니다. */
+  border: 2px dashed blue;
+}
+
+/* 정확히 4개의 자식만 가진 요소를 선택하려면: */
+.card-list:has(.card:nth-child(4):last-child) {
+  /* 자식이 정확히 4개이고 4번째 자식이 마지막 자식인 경우 (즉, 4개의 자식만 있는 경우) */
+  background-color: lightyellow;
+}
+```
+
+이는 카드 목록처럼 요소의 개수에 따라 레이아웃이나 스타일을 변경해야 할 때 매우 유용합니다.
+
+### 6. 특정 클래스를 가진 특정 순서의 자식 선택 (`:nth-child()`와 `:of()` 조합)
+
+`nth-child(n of selector)` 구문을 사용하여 특정 타입이나 클래스를 가진 요소 중 N번째 요소를 선택할 수 있습니다.
+
+**HTML:**
+
+```html
+<div class="product-features">
+  <p class="feature-item">Feature 1</p>
+  <p class="feature-item green">Feature 2 (Green)</p>
+  <p class="feature-item">Feature 3</p>
+  <p class="feature-item green">Feature 4 (Green)</p>
+  <p class="feature-item">Feature 5</p>
+</div>
+```
+
+**CSS:**
+
+```css
+.product-features:has(:nth-child(2 of .green)) {
+  /* .green 클래스를 가진 두 번째 자식을 포함하는 .product-features 부모 요소 선택 */
+  /* 이 경우 첫 번째 .product-features가 선택됩니다. */
+  outline: 10px dotted yellow;
+}
+```
+
+이는 특정 클래스를 가진 자식의 개수를 세어 스타일링하는 것과 유사하게, 특정 클래스를 가진 **N번째 자식을 포함하는 부모 요소**를 선택할 수 있게 해줍니다. 소스에서는 이를 '니치(niche)'한 사용 사례라고 언급하지만, 마크업 제어가 어려운 CMS 환경 등에서 매우 유용할 수 있다고 강조합니다.
+
+## `:has()`의 중요한 제한 사항
+
+- **`:has()` 중첩 불가**: `:has()` 선택자 안에 또 다른 `:has()`를 중첩하여 사용할 수는 없습니다. 이는 재귀적인 동작을 방지하기 위한 제한 사항입니다. 이 기능이 있다면 많은 가능성이 열리겠지만, 현재로서는 허용되지 않습니다.
+
+## 브라우저 지원
+
+`:has()` 선택자는 **2023년부터 모든 주요 브라우저에서 지원**되고 있습니다. 따라서 현재는 프로덕션 환경에서 사용하기에 충분히 좋은 지원을 가지고 있다고 볼 수 있습니다. 다만, `nth-child(n of selector)`와 같은 일부 최신 기능은 별도로 브라우저 지원 테이블을 확인하는 것이 좋습니다.
+
+## 결론
+
+`:has()` 선택자는 CSS에 새로운 차원의 유연성을 제공합니다. 단순히 '부모 선택자'를 넘어, 요소 간의 복잡한 관계를 기반으로 스타일을 적용할 수 있게 해주어 웹 디자인과 개발에서 이전에 불가능했던 다양한 효과와 레이아웃 조작을 가능하게 합니다. 특히 CMS와 같이 마크업에 대한 완전한 통제가 없는 환경에서 `:has()`는 진정한 '구세주'가 될 수 있습니다.
+
+---
