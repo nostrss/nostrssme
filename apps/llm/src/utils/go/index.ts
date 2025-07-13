@@ -1,3 +1,6 @@
+import { Stone } from '@/types'
+import { STONE } from '@/constants/go'
+
 export const getNeighbors = (r: number, c: number, size: number) => {
   return [
     [r - 1, c],
@@ -18,10 +21,10 @@ export const getNeighbors = (r: number, c: number, size: number) => {
 export const getGroupInfo = (
   startRow: number,
   startCol: number,
-  board: number[][]
+  board: Stone[][]
 ) => {
   const color = board[startRow]?.[startCol]
-  if (color === 0 || color === undefined) {
+  if (color === STONE.EMPTY || color === undefined) {
     return { stones: [], liberties: 0 }
   }
 
@@ -43,7 +46,7 @@ export const getGroupInfo = (
       const neighborKey = `${nr},${nc}`
       const neighborColor = board[nr]?.[nc]
 
-      if (neighborColor === 0) {
+      if (neighborColor === STONE.EMPTY) {
         liberties.add(neighborKey)
       } else if (neighborColor === color && !visited.has(neighborKey)) {
         visited.add(neighborKey)
@@ -56,7 +59,7 @@ export const getGroupInfo = (
 }
 
 // 영역 계산 함수
-export const calculateTerritory = (board: number[][]) => {
+export const calculateTerritory = (board: Stone[][]) => {
   const visited = new Set<string>()
   const territories: {
     positions: [number, number][]
@@ -68,7 +71,7 @@ export const calculateTerritory = (board: number[][]) => {
       const key = `${r},${c}`
 
       // 빈 공간이고 아직 방문하지 않은 곳
-      if (board[r]![c] === 0 && !visited.has(key)) {
+      if (board[r]![c] === STONE.EMPTY && !visited.has(key)) {
         const territory = exploreTerritory(r, c, board, visited)
         territories.push(territory)
       }
@@ -82,11 +85,11 @@ export const calculateTerritory = (board: number[][]) => {
 const exploreTerritory = (
   startRow: number,
   startCol: number,
-  board: number[][],
+  board: Stone[][],
   visited: Set<string>
 ) => {
   const positions: [number, number][] = []
-  const boundaryColors = new Set<number>()
+  const boundaryColors = new Set<Stone>()
   const queue: [number, number][] = [[startRow, startCol]]
   const localVisited = new Set<string>([`${startRow},${startCol}`])
 
@@ -103,10 +106,10 @@ const exploreTerritory = (
       const neighborColor = board[nr]?.[nc]
 
       if (neighborColor !== undefined) {
-        if (neighborColor === 0 && !localVisited.has(neighborKey)) {
+        if (neighborColor === STONE.EMPTY && !localVisited.has(neighborKey)) {
           localVisited.add(neighborKey)
           queue.push([nr, nc])
-        } else if (neighborColor !== 0) {
+        } else if (neighborColor !== STONE.EMPTY) {
           boundaryColors.add(neighborColor)
         }
       }
@@ -118,7 +121,7 @@ const exploreTerritory = (
 
   if (boundaryColors.size === 1) {
     const boundaryColor = Array.from(boundaryColors)[0]
-    owner = boundaryColor === 1 ? 'black' : 'white'
+    owner = boundaryColor === STONE.BLACK ? 'black' : 'white'
   }
 
   return { positions, owner }
@@ -126,7 +129,7 @@ const exploreTerritory = (
 
 // 최종 점수 계산
 export const calculateScore = (
-  board: number[][],
+  board: Stone[][],
   blackCaptured: number,
   whiteCaptured: number,
   komi: number = 6.5 // 코미 (백돌 보정)

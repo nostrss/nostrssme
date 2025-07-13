@@ -3,15 +3,21 @@ import { useState, useEffect } from 'react'
 import { create2DArray } from '@repo/utils'
 import GameSettings from '@/components/Go/GameSettings'
 import GoBoard from '@/components/Go/GoBoard'
-import { GameEndType, GameStatus, Player } from '@/types'
-import { BOARD, PLAYER, GAME_STATUS, GAME_END_TYPE } from '@/constants/go'
+import { GameEndType, GameStatus, Player, Stone } from '@/types'
+import {
+  BOARD,
+  PLAYER,
+  GAME_STATUS,
+  GAME_END_TYPE,
+  STONE,
+} from '@/constants/go'
 import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/GameInfo'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
-  const [goBoard, setGoBoard] = useState(() =>
-    create2DArray(BOARD.SIZE.DEFAULT, BOARD.SIZE.DEFAULT, 0)
+  const [goBoard, setGoBoard] = useState<Stone[][]>(() =>
+    create2DArray(BOARD.SIZE.DEFAULT, BOARD.SIZE.DEFAULT, STONE.EMPTY)
   )
   const [currentPlayer, setCurrentPlayer] = useState<Player>(PLAYER.BLACK)
   const [blackCaptured, setBlackCaptured] = useState(0)
@@ -28,12 +34,12 @@ export default function Home() {
     endType: GameEndType
   } | null>(null)
 
-  const getPlayerStoneValue = (currentPlayer: Player) => {
-    return currentPlayer === PLAYER.BLACK ? 1 : 2
+  const getPlayerStone = (currentPlayer: Player): Stone => {
+    return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
   }
 
   const resetGame = () => {
-    setGoBoard(create2DArray(boardSize, boardSize, 0))
+    setGoBoard(create2DArray(boardSize, boardSize, STONE.EMPTY))
     setCurrentPlayer(PLAYER.BLACK)
     setBlackCaptured(0)
     setWhiteCaptured(0)
@@ -89,16 +95,17 @@ export default function Home() {
   const handleCellClick = (rowIndex: number, colIndex: number) => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
-    if (goBoard[rowIndex]![colIndex] !== 0) {
+    if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
       console.log('이곳에는 이미 돌이 놓여있습니다.')
       return
     }
 
     const newBoard = goBoard.map(row => [...row])
-    const playerStoneValue = getPlayerStoneValue(currentPlayer)
-    newBoard[rowIndex]![colIndex] = playerStoneValue
+    const playerStone = getPlayerStone(currentPlayer)
+    newBoard[rowIndex]![colIndex] = playerStone
 
-    const opponentStoneValue = playerStoneValue === 1 ? 2 : 1
+    const opponentStone =
+      playerStone === STONE.BLACK ? STONE.WHITE : STONE.BLACK
     let capturedStones: [number, number][] = []
 
     for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
@@ -106,7 +113,7 @@ export default function Home() {
         continue
       }
 
-      if (newBoard[r]?.[c] === opponentStoneValue) {
+      if (newBoard[r]?.[c] === opponentStone) {
         const { stones, liberties } = getGroupInfo(r, c, newBoard)
         if (liberties === 0) {
           capturedStones = capturedStones.concat(stones)
@@ -114,7 +121,7 @@ export default function Home() {
       }
     }
 
-    capturedStones.forEach(([r, c]) => (newBoard[r]![c] = 0))
+    capturedStones.forEach(([r, c]) => (newBoard[r]![c] = STONE.EMPTY))
 
     if (capturedStones.length > 0) {
       if (currentPlayer === PLAYER.BLACK) {

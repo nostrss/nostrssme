@@ -11,6 +11,12 @@ export const PLAYER = {
   WHITE: 'white',
 } as const
 
+export const STONE = {
+  EMPTY: 0,
+  BLACK: 1,
+  WHITE: 2,
+} as const
+
 export const GAME_STATUS = {
   PLAYING: 'playing',
   FINISHED: 'finished',

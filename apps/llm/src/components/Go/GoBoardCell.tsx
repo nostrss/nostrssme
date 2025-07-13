@@ -3,16 +3,17 @@ import {
   GoBoardVerticalLine,
 } from '@/components/Go/GoBoardLine'
 import GoBoardStone from '@/components/Go/GoBoardStone'
-import { GoCellProps } from '@/types'
+import { GoCellProps, Stone } from '@/types'
+import { STONE } from '@/constants/go'
 
 const GoCell = ({ cell, onClick }: GoCellProps) => {
-  const handleStoneClass = (cell: number) => {
+  const handleStoneClass = (cell: Stone) => {
     switch (cell) {
-      case 0:
+      case STONE.EMPTY:
         return 'bg-transparent'
-      case 1:
+      case STONE.BLACK:
         return 'bg-black'
-      case 2:
+      case STONE.WHITE:
         return 'bg-white'
       default:
         return 'bg-transparent'
@@ -28,7 +29,9 @@ const GoCell = ({ cell, onClick }: GoCellProps) => {
     >
       <GoBoardRowLine />
       <GoBoardVerticalLine />
-      {cell !== 0 && <GoBoardStone stoneColorClass={handleStoneClass(cell)} />}
+      {cell !== STONE.EMPTY && (
+        <GoBoardStone stoneColorClass={handleStoneClass(cell)} />
+      )}
     </div>
   )
 }
