@@ -25,4 +25,5 @@ export interface GameInfoProps {
   currentPlayer: Player
   blackCaptured: number
   whiteCaptured: number
+  passCount: number
 }
