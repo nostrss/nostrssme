@@ -27,6 +27,7 @@ export default function Home() {
     scoreDifference: number
     blackTerritory: number
     whiteTerritory: number
+    endType: 'score' | 'resignation'
   } | null>(null)
 
   const getPlayerStoneValue = (currentPlayer: Player) => {
@@ -56,12 +57,33 @@ export default function Home() {
     if (newPassCount >= 2) {
       // 게임 종료 - 점수 계산
       const result = calculateScore(goBoard, blackCaptured, whiteCaptured)
-      setGameResult(result)
+      setGameResult({
+        ...result,
+        endType: 'score',
+      })
       setGameStatus('finished')
       return
     }
 
     setCurrentPlayer(prevPlayer => (prevPlayer === 'black' ? 'white' : 'black'))
+  }
+
+  const handleResignation = () => {
+    if (gameStatus !== 'playing') return
+
+    const winner = currentPlayer === 'black' ? 'white' : 'black'
+
+    // 기권 시에는 점수 계산 없이 상대방 승리
+    setGameResult({
+      winner,
+      blackScore: 0,
+      whiteScore: 0,
+      scoreDifference: 0,
+      blackTerritory: 0,
+      whiteTerritory: 0,
+      endType: 'resignation',
+    })
+    setGameStatus('finished')
   }
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
@@ -142,28 +164,37 @@ export default function Home() {
             <p className='text-xl font-semibold text-blue-600'>
               승자: {gameResult.winner === 'black' ? '흑돌' : '백돌'}
             </p>
-            <p className='text-lg text-gray-700'>
-              점수차: {gameResult.scoreDifference.toFixed(1)}점
-            </p>
-            <div className='grid grid-cols-2 gap-4 mt-4 text-sm'>
-              <div className='bg-gray-800 text-white p-3 rounded'>
-                <p className='font-semibold'>흑돌</p>
-                <p>영역: {gameResult.blackTerritory}점</p>
-                <p>잡은 돌: {blackCaptured}점</p>
-                <p className='font-bold'>
-                  총점: {gameResult.blackScore.toFixed(1)}점
+            {gameResult.endType === 'resignation' ? (
+              <p className='text-lg text-red-600 font-semibold'>
+                {gameResult.winner === 'black' ? '백돌' : '흑돌'} 기권으로 승부
+                결정
+              </p>
+            ) : (
+              <>
+                <p className='text-lg text-gray-700'>
+                  점수차: {gameResult.scoreDifference.toFixed(1)}점
                 </p>
-              </div>
-              <div className='bg-gray-100 text-gray-800 p-3 rounded'>
-                <p className='font-semibold'>백돌</p>
-                <p>영역: {gameResult.whiteTerritory}점</p>
-                <p>잡은 돌: {whiteCaptured}점</p>
-                <p>코미: 6.5점</p>
-                <p className='font-bold'>
-                  총점: {gameResult.whiteScore.toFixed(1)}점
-                </p>
-              </div>
-            </div>
+                <div className='grid grid-cols-2 gap-4 mt-4 text-sm'>
+                  <div className='bg-gray-800 text-white p-3 rounded'>
+                    <p className='font-semibold'>흑돌</p>
+                    <p>영역: {gameResult.blackTerritory}점</p>
+                    <p>잡은 돌: {blackCaptured}점</p>
+                    <p className='font-bold'>
+                      총점: {gameResult.blackScore.toFixed(1)}점
+                    </p>
+                  </div>
+                  <div className='bg-gray-100 text-gray-800 p-3 rounded'>
+                    <p className='font-semibold'>백돌</p>
+                    <p>영역: {gameResult.whiteTerritory}점</p>
+                    <p>잡은 돌: {whiteCaptured}점</p>
+                    <p>코미: 6.5점</p>
+                    <p className='font-bold'>
+                      총점: {gameResult.whiteScore.toFixed(1)}점
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -177,12 +208,20 @@ export default function Home() {
 
       <div className='mb-4 flex gap-4'>
         {gameStatus === 'playing' ? (
-          <button
-            onClick={handlePass}
-            className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md transition-colors'
-          >
-            패스 ({currentPlayer === 'black' ? '흑' : '백'})
-          </button>
+          <>
+            <button
+              onClick={handlePass}
+              className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md transition-colors'
+            >
+              패스 ({currentPlayer === 'black' ? '흑' : '백'})
+            </button>
+            <button
+              onClick={handleResignation}
+              className='px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg shadow-md transition-colors'
+            >
+              기권 ({currentPlayer === 'black' ? '흑' : '백'})
+            </button>
+          </>
         ) : (
           <button
             onClick={resetGame}
