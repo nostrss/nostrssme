@@ -5,7 +5,7 @@ import GameSettings from '@/components/Go/GameSettings'
 import GoBoard from '@/components/Go/GoBoard'
 import { Player } from '@/types'
 import { BOARD } from '@/constants/go'
-import { getGroupInfo, getNeighbors } from '@/utils/go'
+import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/GameInfo'
 
 export default function Home() {
@@ -17,26 +17,47 @@ export default function Home() {
   const [blackCaptured, setBlackCaptured] = useState(0)
   const [whiteCaptured, setWhiteCaptured] = useState(0)
   const [passCount, setPassCount] = useState(0)
+  const [gameStatus, setGameStatus] = useState<'playing' | 'finished'>(
+    'playing'
+  )
+  const [gameResult, setGameResult] = useState<{
+    winner: 'black' | 'white'
+    blackScore: number
+    whiteScore: number
+    scoreDifference: number
+    blackTerritory: number
+    whiteTerritory: number
+  } | null>(null)
 
   const getPlayerStoneValue = (currentPlayer: Player) => {
     return currentPlayer === 'black' ? 1 : 2
   }
 
-  useEffect(() => {
+  const resetGame = () => {
     setGoBoard(create2DArray(boardSize, boardSize, 0))
     setCurrentPlayer('black')
     setBlackCaptured(0)
     setWhiteCaptured(0)
     setPassCount(0)
+    setGameStatus('playing')
+    setGameResult(null)
+  }
+
+  useEffect(() => {
+    resetGame()
   }, [boardSize])
 
   const handlePass = () => {
+    if (gameStatus !== 'playing') return
+
     const newPassCount = passCount + 1
     setPassCount(newPassCount)
 
     if (newPassCount >= 2) {
-      alert('두 플레이어가 연속으로 패스했습니다. 게임이 종료됩니다.')
-      // TODO: 게임 종료 로직 구현
+      // 게임 종료 - 점수 계산
+      const result = calculateScore(goBoard, blackCaptured, whiteCaptured)
+      setGameResult(result)
+      setGameStatus('finished')
       return
     }
 
@@ -44,6 +65,8 @@ export default function Home() {
   }
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
+    if (gameStatus !== 'playing') return
+
     if (goBoard[rowIndex]![colIndex] !== 0) {
       console.log('이곳에는 이미 돌이 놓여있습니다.')
       return
@@ -109,20 +132,67 @@ export default function Home() {
         boardSize={boardSize}
         handleBoardSizeChange={handleBoardSizeChange}
       />
+
+      {gameStatus === 'finished' && gameResult && (
+        <div className='mb-6 p-6 bg-white rounded-lg shadow-lg border-2 border-gray-200'>
+          <h2 className='text-2xl font-bold text-center mb-4 text-gray-800'>
+            게임 종료!
+          </h2>
+          <div className='text-center space-y-2'>
+            <p className='text-xl font-semibold text-blue-600'>
+              승자: {gameResult.winner === 'black' ? '흑돌' : '백돌'}
+            </p>
+            <p className='text-lg text-gray-700'>
+              점수차: {gameResult.scoreDifference.toFixed(1)}점
+            </p>
+            <div className='grid grid-cols-2 gap-4 mt-4 text-sm'>
+              <div className='bg-gray-800 text-white p-3 rounded'>
+                <p className='font-semibold'>흑돌</p>
+                <p>영역: {gameResult.blackTerritory}점</p>
+                <p>잡은 돌: {blackCaptured}점</p>
+                <p className='font-bold'>
+                  총점: {gameResult.blackScore.toFixed(1)}점
+                </p>
+              </div>
+              <div className='bg-gray-100 text-gray-800 p-3 rounded'>
+                <p className='font-semibold'>백돌</p>
+                <p>영역: {gameResult.whiteTerritory}점</p>
+                <p>잡은 돌: {whiteCaptured}점</p>
+                <p>코미: 6.5점</p>
+                <p className='font-bold'>
+                  총점: {gameResult.whiteScore.toFixed(1)}점
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <GameInfo
         currentPlayer={currentPlayer}
         blackCaptured={blackCaptured}
         whiteCaptured={whiteCaptured}
         passCount={passCount}
       />
-      <div className='mb-4'>
-        <button
-          onClick={handlePass}
-          className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md transition-colors'
-        >
-          패스 ({currentPlayer === 'black' ? '흑' : '백'})
-        </button>
+
+      <div className='mb-4 flex gap-4'>
+        {gameStatus === 'playing' ? (
+          <button
+            onClick={handlePass}
+            className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md transition-colors'
+          >
+            패스 ({currentPlayer === 'black' ? '흑' : '백'})
+          </button>
+        ) : (
+          <button
+            onClick={resetGame}
+            className='px-6 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg shadow-md transition-colors'
+          >
+            새 게임 시작
+          </button>
+        )}
       </div>
+
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
     </div>
   )
