@@ -26,3 +26,8 @@ export const GAME_END_TYPE = {
   SCORE: 'score',
   RESIGNATION: 'resignation',
 } as const
+
+export const AI_MODEL = {
+  GEMINI_2_FLASH_001: 'gemini-2-flash-001',
+  GEMINI_2_FLASH_001_EXP: 'gemini-2-flash-001-exp',
+} as const
