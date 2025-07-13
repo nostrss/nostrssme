@@ -1,5 +1,8 @@
-export type Player = 'black' | 'white'
+import { GAME_END_TYPE, GAME_STATUS, PLAYER } from '@/constants/go'
 
+export type Player = (typeof PLAYER)[keyof typeof PLAYER]
+export type GameStatus = (typeof GAME_STATUS)[keyof typeof GAME_STATUS]
+export type GameEndType = (typeof GAME_END_TYPE)[keyof typeof GAME_END_TYPE]
 export type stoneColorClassType = 'bg-black' | 'bg-white' | 'bg-transparent'
 
 export interface GameSettingsProps {
