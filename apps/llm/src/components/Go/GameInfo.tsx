@@ -4,6 +4,7 @@ export default function GameInfo({
   blackCaptured,
   whiteCaptured,
   currentPlayer,
+  passCount,
 }: GameInfoProps) {
   return (
     <div className='mb-2 flex flex-col gap-4 items-center'>
@@ -17,6 +18,9 @@ export default function GameInfo({
         <span className='text-black'>흑 잡은 돌: {blackCaptured}</span>
         <span className='text-black'>백 잡은 돌: {whiteCaptured}</span>
       </div>
+      {passCount > 0 && (
+        <div className='text-sm text-gray-600'>연속 패스 횟수: {passCount}</div>
+      )}
     </div>
   )
 }
