@@ -12,7 +12,7 @@ export default function GameInfo({
   resetGame,
 }: GameInfoProps) {
   return (
-    <div className='mb-2 flex flex-col gap-4 items-center'>
+    <div className='mb-2 flex flex-row gap-4 items-center'>
       <p className='text-base md:text-lg text-black'>
         현재 차례:
         <span className='font-bold'>

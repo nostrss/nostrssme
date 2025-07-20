@@ -1,8 +1,8 @@
 import {
   GoBoardRowLine,
   GoBoardVerticalLine,
-} from '@/components/Go/GoBoardLine'
-import GoBoardStone from '@/components/Go/GoBoardStone'
+} from '@/components/Go/game/GoBoardLine'
+import GoBoardStone from '@/components/Go/game/GoBoardStone'
 import { GoCellProps, Stone } from '@/types'
 import { STONE } from '@/constants/go'
 
