@@ -7,6 +7,7 @@ export default function GameInfo({
   currentPlayer,
   passCount,
   gameStatus,
+  komi,
   handlePass,
   handleResignation,
   resetGame,
@@ -22,6 +23,7 @@ export default function GameInfo({
       <div className='flex flex-row gap-4'>
         <span className='text-black'>흑 잡은 돌: {blackCaptured}</span>
         <span className='text-black'>백 잡은 돌: {whiteCaptured}</span>
+        <span className='text-black'>코미: {komi}</span>
       </div>
       {passCount > 0 && (
         <div className='text-sm text-gray-600'>연속 패스 횟수: {passCount}</div>

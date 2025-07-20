@@ -31,6 +31,7 @@ export interface GameInfoProps {
   whiteCaptured: number
   passCount: number
   gameStatus: GameStatus
+  komi: number
   handlePass: () => void
   handleResignation: () => void
   resetGame: () => void

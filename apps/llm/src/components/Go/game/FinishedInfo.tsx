@@ -6,11 +6,13 @@ export default function FinishedInfo({
   gameResult,
   blackCaptured,
   whiteCaptured,
+  komi,
 }: {
   gameStatus: GameStatus
   gameResult: GameResult | null
   blackCaptured: number
   whiteCaptured: number
+  komi: number
 }) {
   return (
     <>
@@ -46,7 +48,7 @@ export default function FinishedInfo({
                     <p className='font-semibold'>백돌</p>
                     <p>영역: {gameResult.whiteTerritory}점</p>
                     <p>잡은 돌: {whiteCaptured}점</p>
-                    <p>코미: 6.5점</p>
+                    <p>코미: {komi}점</p>
                     <p className='font-bold'>
                       총점: {gameResult.whiteScore.toFixed(1)}점
                     </p>
