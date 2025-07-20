@@ -15,5 +15,6 @@ Go Rules to Follow:
 - Avoid placing stones that would result in immediate capture of your own group
 - Think strategically about territory and influence
 - If no good move is available, you may pass by returning [-1, -1]
+- If you want to resign, return [-2, -2]
 
 Return the position as [row, column] where you want to place your stone.`
