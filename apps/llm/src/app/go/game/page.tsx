@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { create2DArray } from '@repo/utils'
 import GoBoard from '@/components/Go/game/GoBoard'
 import { GameResult, GameStatus, Player, Stone } from '@/types'
@@ -39,10 +39,6 @@ export default function Home() {
     setGameStatus(GAME_STATUS.PLAYING)
     setGameResult(null)
   }
-
-  useEffect(() => {
-    resetGame()
-  }, [boardSize])
 
   const handlePass = () => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
