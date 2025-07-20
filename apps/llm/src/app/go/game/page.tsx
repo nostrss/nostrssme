@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { create2DArray } from '@repo/utils'
 import GoBoard from '@/components/Go/game/GoBoard'
 import { GameResult, GameStatus, Player, Stone } from '@/types'
@@ -13,6 +13,7 @@ import {
 import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/game/GameInfo'
 import FinishedInfo from '@/components/Go/game/FinishedInfo'
+import { requestAiNextStone } from '@/api/go'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -81,6 +82,7 @@ export default function Home() {
   }
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
+    console.log(rowIndex, colIndex)
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
@@ -136,6 +138,16 @@ export default function Home() {
       prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
     )
   }
+
+  useEffect(() => {
+    if (currentPlayer === PLAYER.WHITE) {
+      requestAiNextStone(goBoard).then(response => {
+        if (response.success) {
+          handleCellClick(response.position[0], response.position[1])
+        }
+      })
+    }
+  }, [currentPlayer])
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
