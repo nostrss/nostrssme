@@ -1,5 +1,4 @@
 'use client'
-import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -19,17 +18,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { useRouter } from 'next/navigation'
 
-export function GameInfoForm({
-  className,
-  ...props
-}: React.ComponentProps<'div'>) {
+export function SetUpForm() {
+  const router = useRouter()
   const [boardSize, setBoardSize] = useState<number[]>([5])
   const [stone, setStone] = useState<string>(PLAYER.BLACK)
   const [model, setModel] = useState<string>(AI_MODEL.GEMINI_2_FLASH_001)
   const [komi, setKomi] = useState<number[]>([6.5])
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    router.push(
+      `/go/game?boardSize=${boardSize[0]}&stone=${stone}&model=${model}&komi=${komi[0]}`
+    )
+  }
+
   return (
-    <div className={cn('flex flex-col gap-6', className)} {...props}>
+    <div className='flex flex-col gap-6 w-full'>
       <Card>
         <CardHeader>
           <CardTitle>Enter Game info</CardTitle>
@@ -38,7 +44,7 @@ export function GameInfoForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form>
+          <form onSubmit={handleSubmit}>
             <div className='flex flex-col gap-6'>
               <div className='grid gap-3'>
                 <div className='flex items-center justify-between'>
@@ -49,6 +55,7 @@ export function GameInfoForm({
                 </div>
                 <Slider
                   defaultValue={boardSize}
+                  min={5}
                   max={19}
                   step={1}
                   onValueChange={setBoardSize}
