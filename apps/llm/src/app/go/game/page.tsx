@@ -16,7 +16,7 @@ import FinishedInfo from '@/components/Go/game/FinishedInfo'
 import { requestAiNextStone } from '@/api/go'
 
 export default function Home() {
-  const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
+  const [boardSize] = useState(BOARD.SIZE.DEFAULT)
   const [goBoard, setGoBoard] = useState<Stone[][]>(() =>
     create2DArray(BOARD.SIZE.DEFAULT, BOARD.SIZE.DEFAULT, STONE.EMPTY)
   )
