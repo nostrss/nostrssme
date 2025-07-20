@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { create2DArray } from '@repo/utils'
 import GameSettings from '@/components/Go/GameSettings'
 import GoBoard from '@/components/Go/GoBoard'
-import { GameEndType, GameStatus, Player, Stone } from '@/types'
+import { GameResult, GameStatus, Player, Stone } from '@/types'
 import {
   BOARD,
   PLAYER,
@@ -13,6 +13,7 @@ import {
 } from '@/constants/go'
 import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/GameInfo'
+import FinishedInfo from '@/components/Go/game/FinishedInfo'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -24,15 +25,7 @@ export default function Home() {
   const [whiteCaptured, setWhiteCaptured] = useState(0)
   const [passCount, setPassCount] = useState(0)
   const [gameStatus, setGameStatus] = useState<GameStatus>(GAME_STATUS.PLAYING)
-  const [gameResult, setGameResult] = useState<{
-    winner: Player
-    blackScore: number
-    whiteScore: number
-    scoreDifference: number
-    blackTerritory: number
-    whiteTerritory: number
-    endType: GameEndType
-  } | null>(null)
+  const [gameResult, setGameResult] = useState<GameResult | null>(null)
 
   const getPlayerStone = (currentPlayer: Player): Stone => {
     return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
@@ -164,82 +157,23 @@ export default function Home() {
         handleBoardSizeChange={handleBoardSizeChange}
       />
 
-      {gameStatus === GAME_STATUS.FINISHED && gameResult && (
-        <div className='mb-6 p-6 bg-white rounded-lg shadow-lg border-2 border-gray-200'>
-          <h2 className='text-2xl font-bold text-center mb-4 text-gray-800'>
-            게임 종료!
-          </h2>
-          <div className='text-center space-y-2'>
-            <p className='text-xl font-semibold text-blue-600'>
-              승자: {gameResult.winner === PLAYER.BLACK ? '흑돌' : '백돌'}
-            </p>
-            {gameResult.endType === GAME_END_TYPE.RESIGNATION ? (
-              <p className='text-lg text-red-600 font-semibold'>
-                {gameResult.winner === PLAYER.BLACK ? '백돌' : '흑돌'} 기권으로
-                승부 결정
-              </p>
-            ) : (
-              <>
-                <p className='text-lg text-gray-700'>
-                  점수차: {gameResult.scoreDifference.toFixed(1)}점
-                </p>
-                <div className='grid grid-cols-2 gap-4 mt-4 text-sm'>
-                  <div className='bg-gray-800 text-white p-3 rounded'>
-                    <p className='font-semibold'>흑돌</p>
-                    <p>영역: {gameResult.blackTerritory}점</p>
-                    <p>잡은 돌: {blackCaptured}점</p>
-                    <p className='font-bold'>
-                      총점: {gameResult.blackScore.toFixed(1)}점
-                    </p>
-                  </div>
-                  <div className='bg-gray-100 text-gray-800 p-3 rounded'>
-                    <p className='font-semibold'>백돌</p>
-                    <p>영역: {gameResult.whiteTerritory}점</p>
-                    <p>잡은 돌: {whiteCaptured}점</p>
-                    <p>코미: 6.5점</p>
-                    <p className='font-bold'>
-                      총점: {gameResult.whiteScore.toFixed(1)}점
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <FinishedInfo
+        gameStatus={gameStatus}
+        gameResult={gameResult}
+        blackCaptured={blackCaptured}
+        whiteCaptured={whiteCaptured}
+      />
 
       <GameInfo
         currentPlayer={currentPlayer}
         blackCaptured={blackCaptured}
         whiteCaptured={whiteCaptured}
         passCount={passCount}
+        gameStatus={gameStatus}
+        handlePass={handlePass}
+        handleResignation={handleResignation}
+        resetGame={resetGame}
       />
-
-      <div className='mb-4 flex gap-4'>
-        {gameStatus === GAME_STATUS.PLAYING ? (
-          <>
-            <button
-              onClick={handlePass}
-              className='px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow-md transition-colors'
-            >
-              패스 ({currentPlayer === PLAYER.BLACK ? '흑' : '백'})
-            </button>
-            <button
-              onClick={handleResignation}
-              className='px-6 py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg shadow-md transition-colors'
-            >
-              기권 ({currentPlayer === PLAYER.BLACK ? '흑' : '백'})
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={resetGame}
-            className='px-6 py-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg shadow-md transition-colors'
-          >
-            새 게임 시작
-          </button>
-        )}
-      </div>
 
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
     </div>

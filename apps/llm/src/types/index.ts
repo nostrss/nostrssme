@@ -30,4 +30,18 @@ export interface GameInfoProps {
   blackCaptured: number
   whiteCaptured: number
   passCount: number
+  gameStatus: GameStatus
+  handlePass: () => void
+  handleResignation: () => void
+  resetGame: () => void
+}
+
+export interface GameResult {
+  winner: Player
+  blackScore: number
+  whiteScore: number
+  scoreDifference: number
+  blackTerritory: number
+  whiteTerritory: number
+  endType: GameEndType
 }
