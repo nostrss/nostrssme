@@ -1,8 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { create2DArray } from '@repo/utils'
-import GameSettings from '@/components/Go/GameSettings'
-import GoBoard from '@/components/Go/GoBoard'
+import GoBoard from '@/components/Go/game/GoBoard'
 import { GameResult, GameStatus, Player, Stone } from '@/types'
 import {
   BOARD,
@@ -12,8 +11,9 @@ import {
   STONE,
 } from '@/constants/go'
 import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
-import GameInfo from '@/components/Go/GameInfo'
+import GameInfo from '@/components/Go/game/GameInfo'
 import FinishedInfo from '@/components/Go/game/FinishedInfo'
+import { requestAiNextStone } from '@/api/go'
 
 export default function Home() {
   const [boardSize, setBoardSize] = useState(BOARD.SIZE.DEFAULT)
@@ -40,10 +40,6 @@ export default function Home() {
     setGameStatus(GAME_STATUS.PLAYING)
     setGameResult(null)
   }
-
-  useEffect(() => {
-    resetGame()
-  }, [boardSize])
 
   const handlePass = () => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
@@ -86,6 +82,7 @@ export default function Home() {
   }
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
+    console.log(rowIndex, colIndex)
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
@@ -136,27 +133,24 @@ export default function Home() {
 
     // 돌을 놓으면 패스 카운트 초기화
     setPassCount(0)
-
     setGoBoard(newBoard)
     setCurrentPlayer(prevPlayer =>
       prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
     )
   }
 
-  const handleBoardSizeChange = (
-    event: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    const newSize = parseInt(event.target.value, 10)
-    setBoardSize(newSize)
-  }
+  useEffect(() => {
+    if (currentPlayer === PLAYER.WHITE) {
+      requestAiNextStone(goBoard).then(response => {
+        if (response.success) {
+          handleCellClick(response.position[0], response.position[1])
+        }
+      })
+    }
+  }, [currentPlayer])
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
-      <GameSettings
-        boardSize={boardSize}
-        handleBoardSizeChange={handleBoardSizeChange}
-      />
-
       <FinishedInfo
         gameStatus={gameStatus}
         gameResult={gameResult}
