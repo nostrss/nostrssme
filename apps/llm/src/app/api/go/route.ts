@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenAI, Type } from '@google/genai'
 import { prompt } from '@/constants/go/prompt'
+import { AI_MODEL } from '@/constants/go'
 
 export async function POST(request: Request) {
   try {
-    const { board } = await request.json()
+    const { board, model = AI_MODEL.GEMINI_2_0_FLASH } = await request.json()
 
     const genai = new GoogleGenAI({
       apiKey: process.env.GOOGLE_API_KEY,
     })
 
     const response = await genai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model,
       contents: [
         {
           role: 'user',

@@ -24,7 +24,7 @@ export function SetUpForm() {
   const router = useRouter()
   const [boardSize, setBoardSize] = useState<number[]>([5])
   const [stone, setStone] = useState<string>(PLAYER.BLACK)
-  const [model, setModel] = useState<string>(AI_MODEL.GEMINI_2_FLASH_001)
+  const [model, setModel] = useState<string>('')
   const [komi, setKomi] = useState<number[]>([6.5])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
