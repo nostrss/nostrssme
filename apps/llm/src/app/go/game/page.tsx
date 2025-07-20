@@ -109,11 +109,6 @@ export default function Home() {
   const handleCellClick = (rowIndex: number, colIndex: number) => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
-    if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
-      console.log('이곳에는 이미 돌이 놓여있습니다.')
-      return
-    }
-
     if (rowIndex === -1 && colIndex === -1) {
       handlePass()
       return
@@ -121,6 +116,11 @@ export default function Home() {
 
     if (rowIndex === -2 && colIndex === -2) {
       handleResignation()
+      return
+    }
+
+    if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
+      console.log('이곳에는 이미 돌이 놓여있습니다.')
       return
     }
 
