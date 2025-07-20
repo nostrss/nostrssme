@@ -40,8 +40,8 @@ export default function Home() {
   const initialModel = modelParam || AI_MODEL.GEMINI_2_0_FLASH
 
   const [boardSize] = useState(initialBoardSize)
-  const [model, setModel] = useState(initialModel)
-  const [komi, setKomi] = useState(initialKomi)
+  const [model] = useState(initialModel)
+  const [komi] = useState(initialKomi)
   const [goBoard, setGoBoard] = useState<Stone[][]>(() =>
     create2DArray(initialBoardSize, initialBoardSize, STONE.EMPTY)
   )
