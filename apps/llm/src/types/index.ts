@@ -1,4 +1,6 @@
 import { GAME_END_TYPE, GAME_STATUS, PLAYER, STONE } from '@/constants/go'
+import { setupFormSchema } from '@/schema/go/setup'
+import { z } from 'zod'
 
 export type Player = (typeof PLAYER)[keyof typeof PLAYER]
 export type GameStatus = (typeof GAME_STATUS)[keyof typeof GAME_STATUS]
@@ -46,3 +48,5 @@ export interface GameResult {
   whiteTerritory: number
   endType: GameEndType
 }
+
+export type SetupFormData = z.infer<typeof setupFormSchema>

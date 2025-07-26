@@ -20,15 +20,7 @@ import {
 import { Slider } from '@/components/ui/slider'
 import { useRouter } from 'next/navigation'
 import { z } from 'zod'
-
-const setupFormSchema = z.object({
-  boardSize: z.number().min(5).max(19),
-  blackPlayer: z.string().min(1),
-  whitePlayer: z.string().min(1),
-  komi: z.number().min(0).max(10),
-})
-
-type SetupFormData = z.infer<typeof setupFormSchema>
+import { SetupFormData } from '@/types'
 
 export function SetUpForm() {
   const router = useRouter()
@@ -37,6 +29,13 @@ export function SetUpForm() {
   const [whitePlayer, setWhitePlayer] = useState<string>('')
   const [komi, setKomi] = useState<number[]>([6.5])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const setupFormSchema = z.object({
+    boardSize: z.number().min(5).max(19),
+    blackPlayer: z.string().min(1),
+    whitePlayer: z.string().min(1),
+    komi: z.number().min(0).max(10),
+  })
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
