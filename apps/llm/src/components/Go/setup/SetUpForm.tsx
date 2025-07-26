@@ -70,9 +70,9 @@ export function SetUpForm() {
     <div className='flex flex-col gap-6 w-full'>
       <Card>
         <CardHeader>
-          <CardTitle>Enter Game info</CardTitle>
+          <CardTitle>Play Go with a variety of AI models.</CardTitle>
           <CardDescription>
-            Enter your email below to login to your account
+            You can challenge a Go match against an AI model of your choice.
           </CardDescription>
         </CardHeader>
         <CardContent>
