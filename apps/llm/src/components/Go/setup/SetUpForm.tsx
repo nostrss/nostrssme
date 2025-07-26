@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useState } from 'react'
-import { AI_MODEL } from '@/constants/go'
+import { AI_MODELS, PLAYER_TYPE } from '@/constants/go'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -106,11 +106,15 @@ export function SetUpForm() {
                     <SelectValue placeholder='Select Black Player type' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='person'>Person</SelectItem>
-                    {Object.values(AI_MODEL).map(model => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
+                    <SelectItem value={PLAYER_TYPE.PERSON}>Person</SelectItem>
+                    {Object.entries(AI_MODELS).map(([providerName, models]) => (
+                      <div key={providerName}>
+                        {Object.entries(models).map(([modelKey, modelLabel]) => (
+                          <SelectItem key={modelKey} value={modelKey}>
+                            {modelLabel}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>
@@ -127,11 +131,15 @@ export function SetUpForm() {
                     <SelectValue placeholder='Select White Player type' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='person'>Person</SelectItem>
-                    {Object.values(AI_MODEL).map(model => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
+                    <SelectItem value={PLAYER_TYPE.PERSON}>Person</SelectItem>
+                    {Object.entries(AI_MODELS).map(([providerName, models]) => (
+                      <div key={providerName}>
+                        {Object.entries(models).map(([modelKey, modelLabel]) => (
+                          <SelectItem key={modelKey} value={modelKey}>
+                            {modelLabel}
+                          </SelectItem>
+                        ))}
+                      </div>
                     ))}
                   </SelectContent>
                 </Select>

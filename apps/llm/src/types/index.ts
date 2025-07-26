@@ -50,3 +50,12 @@ export interface GameResult {
 }
 
 export type SetupFormData = z.infer<typeof setupFormSchema>
+
+export type PlayerType = 'person' | string
+
+export interface PlayerConfig {
+  type: PlayerType
+  isAI: boolean
+  aiProvider?: string
+  aiModel?: string
+}
