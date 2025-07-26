@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { useState } from 'react'
-import { AI_MODEL, PLAYER } from '@/constants/go'
+import { AI_MODEL } from '@/constants/go'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -23,14 +23,14 @@ import { useRouter } from 'next/navigation'
 export function SetUpForm() {
   const router = useRouter()
   const [boardSize, setBoardSize] = useState<number[]>([5])
-  const [stone, setStone] = useState<string>(PLAYER.BLACK)
-  const [model, setModel] = useState<string>('')
+  const [blackPlayer, setBlackPlayer] = useState<string>('person')
+  const [whitePlayer, setWhitePlayer] = useState<string>('person')
   const [komi, setKomi] = useState<number[]>([6.5])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     router.push(
-      `/go/game?boardSize=${boardSize[0]}&stone=${stone}&model=${model}&komi=${komi[0]}`
+      `/go/game?boardSize=${boardSize[0]}&blackPlayer=${blackPlayer}&whitePlayerType=${whitePlayer}&komi=${komi[0]}`
     )
   }
 
@@ -63,24 +63,29 @@ export function SetUpForm() {
                 />
               </div>
               <div className='grid gap-3'>
-                <Label>Choose your stone color</Label>
-                <Select value={stone} onValueChange={setStone}>
+                <Label>Black Stone Player</Label>
+                <Select value={blackPlayer} onValueChange={setBlackPlayer}>
                   <SelectTrigger className='w-full'>
-                    <SelectValue placeholder='Select a stone' />
+                    <SelectValue placeholder='Select player type' />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={PLAYER.BLACK}>Black</SelectItem>
-                    <SelectItem value={PLAYER.WHITE}>White</SelectItem>
+                    <SelectItem value='person'>Person</SelectItem>
+                    {Object.values(AI_MODEL).map(model => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className='grid gap-3'>
-                <Label>Choose Model</Label>
-                <Select value={model} onValueChange={setModel}>
+                <Label>White Stone Player</Label>
+                <Select value={whitePlayer} onValueChange={setWhitePlayer}>
                   <SelectTrigger className='w-full'>
-                    <SelectValue placeholder='Select a Ai Model' />
+                    <SelectValue placeholder='Select player type' />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value='person'>Person</SelectItem>
                     {Object.values(AI_MODEL).map(model => (
                       <SelectItem key={model} value={model}>
                         {model}
