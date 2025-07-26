@@ -25,6 +25,7 @@ export const GAME_STATUS = {
 export const GAME_END_TYPE = {
   SCORE: 'score',
   RESIGNATION: 'resignation',
+  TWO_PASSES: 'two_passes',
 } as const
 
 export const AI_PROVIDER = {

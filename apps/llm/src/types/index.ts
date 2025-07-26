@@ -37,6 +37,8 @@ export interface GameInfoProps {
   handlePass: () => void
   handleResignation: () => void
   resetGame: () => void
+  lastAiAction?: string
+  isAiThinking?: boolean
 }
 
 export interface GameResult {

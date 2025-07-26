@@ -41,13 +41,19 @@ export default function Home() {
   const blackPlayerConfig: PlayerConfig = {
     type: blackPlayerParam || PLAYER_TYPE.PERSON,
     isAI: blackPlayerParam !== PLAYER_TYPE.PERSON,
-    aiModel: blackPlayerParam !== PLAYER_TYPE.PERSON ? blackPlayerParam || undefined : undefined,
+    aiModel:
+      blackPlayerParam !== PLAYER_TYPE.PERSON
+        ? blackPlayerParam || undefined
+        : undefined,
   }
 
   const whitePlayerConfig: PlayerConfig = {
     type: whitePlayerParam || PLAYER_TYPE.PERSON,
     isAI: whitePlayerParam !== PLAYER_TYPE.PERSON,
-    aiModel: whitePlayerParam !== PLAYER_TYPE.PERSON ? whitePlayerParam || undefined : undefined,
+    aiModel:
+      whitePlayerParam !== PLAYER_TYPE.PERSON
+        ? whitePlayerParam || undefined
+        : undefined,
   }
 
   const [boardSize] = useState(initialBoardSize)
@@ -64,6 +70,7 @@ export default function Home() {
   const [gameStatus, setGameStatus] = useState<GameStatus>(GAME_STATUS.PLAYING)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
   const [isAiThinking, setIsAiThinking] = useState(false)
+  const [lastAiAction, setLastAiAction] = useState<string>('')
 
   const getPlayerStone = (currentPlayer: Player): Stone => {
     return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
@@ -90,6 +97,7 @@ export default function Home() {
     setGameStatus(GAME_STATUS.PLAYING)
     setGameResult(null)
     setIsAiThinking(false)
+    setLastAiAction('')
   }
 
   const handlePass = useCallback(() => {
@@ -103,7 +111,7 @@ export default function Home() {
       const result = calculateScore(goBoard, blackCaptured, whiteCaptured, komi)
       setGameResult({
         ...result,
-        endType: GAME_END_TYPE.SCORE,
+        endType: GAME_END_TYPE.TWO_PASSES,
       })
       setGameStatus(GAME_STATUS.FINISHED)
       return
@@ -147,10 +155,10 @@ export default function Home() {
     }
 
     // 현재 플레이어가 AI인 경우 사람이 클릭할 수 없음
-    if (isCurrentPlayerAI()) {
-      console.log('AI 플레이어의 턴입니다.')
-      return
-    }
+    // if (isCurrentPlayerAI()) {
+    //   console.log('AI 플레이어의 턴입니다.')
+    //   return
+    // }
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
       console.log('이곳에는 이미 돌이 놓여있습니다.')
@@ -160,55 +168,58 @@ export default function Home() {
     makeMove(rowIndex, colIndex)
   }
 
-  const makeMove = useCallback((rowIndex: number, colIndex: number) => {
-    const newBoard = goBoard.map(row => [...row])
-    const playerStone = getPlayerStone(currentPlayer)
-    newBoard[rowIndex]![colIndex] = playerStone
+  const makeMove = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      const newBoard = goBoard.map(row => [...row])
+      const playerStone = getPlayerStone(currentPlayer)
+      newBoard[rowIndex]![colIndex] = playerStone
 
-    const opponentStone =
-      playerStone === STONE.BLACK ? STONE.WHITE : STONE.BLACK
-    let capturedStones: [number, number][] = []
+      const opponentStone =
+        playerStone === STONE.BLACK ? STONE.WHITE : STONE.BLACK
+      let capturedStones: [number, number][] = []
 
-    for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
-      if (r == null || c == null) {
-        continue
-      }
+      for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
+        if (r == null || c == null) {
+          continue
+        }
 
-      if (newBoard[r]?.[c] === opponentStone) {
-        const { stones, liberties } = getGroupInfo(r, c, newBoard)
-        if (liberties === 0) {
-          capturedStones = capturedStones.concat(stones)
+        if (newBoard[r]?.[c] === opponentStone) {
+          const { stones, liberties } = getGroupInfo(r, c, newBoard)
+          if (liberties === 0) {
+            capturedStones = capturedStones.concat(stones)
+          }
         }
       }
-    }
 
-    capturedStones.forEach(([r, c]) => (newBoard[r]![c] = STONE.EMPTY))
+      capturedStones.forEach(([r, c]) => (newBoard[r]![c] = STONE.EMPTY))
 
-    if (capturedStones.length > 0) {
-      if (currentPlayer === PLAYER.BLACK) {
-        setBlackCaptured(prev => prev + capturedStones.length)
-      } else {
-        setWhiteCaptured(prev => prev + capturedStones.length)
+      if (capturedStones.length > 0) {
+        if (currentPlayer === PLAYER.BLACK) {
+          setBlackCaptured(prev => prev + capturedStones.length)
+        } else {
+          setWhiteCaptured(prev => prev + capturedStones.length)
+        }
       }
-    }
 
-    const { liberties: ownLiberties } = getGroupInfo(
-      rowIndex,
-      colIndex,
-      newBoard
-    )
-    if (ownLiberties === 0 && capturedStones.length === 0) {
-      console.log('자살수는 둘 수 없습니다.')
-      return
-    }
+      const { liberties: ownLiberties } = getGroupInfo(
+        rowIndex,
+        colIndex,
+        newBoard
+      )
+      if (ownLiberties === 0 && capturedStones.length === 0) {
+        console.log('자살수는 둘 수 없습니다.')
+        return
+      }
 
-    // 돌을 놓으면 패스 카운트 초기화
-    setPassCount(0)
-    setGoBoard(newBoard)
-    setCurrentPlayer(prevPlayer =>
-      prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
-    )
-  }, [goBoard, currentPlayer, boardSize])
+      // 돌을 놓으면 패스 카운트 초기화
+      setPassCount(0)
+      setGoBoard(newBoard)
+      setCurrentPlayer(prevPlayer =>
+        prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
+      )
+    },
+    [goBoard, currentPlayer, boardSize]
+  )
 
   // AI 플레이어의 수를 처리하는 useEffect
   useEffect(() => {
@@ -219,30 +230,48 @@ export default function Home() {
     if (!aiModel) return
 
     setIsAiThinking(true)
-    
-    requestAiNextStone(goBoard, currentPlayer, aiModel)
-      .then(response => {
-        if (response.success) {
-          const [row, col] = response.position
-          
-          if (response.isPass) {
-            handlePass()
-          } else if (response.isResignation) {
-            handleResignation()
+
+    // AI 턴 시 4초 지연으로 API 할당량 관리
+    setTimeout(() => {
+      requestAiNextStone(goBoard, currentPlayer, aiModel)
+        .then(response => {
+          if (response.success) {
+            const [row, col] = response.position
+            const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
+
+            if (response.isPass) {
+              setLastAiAction(`AI ${playerName}이 패스했습니다`)
+              handlePass()
+            } else if (response.isResignation) {
+              setLastAiAction(`AI ${playerName}이 기권했습니다`)
+              handleResignation()
+            } else {
+              setLastAiAction('')
+              handleCellClick(row, col)
+            }
           } else {
-            makeMove(row, col)
+            const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
+            console.error(`AI ${playerName} 이동 실패:`, response.error)
           }
-        } else {
-          console.error('AI 이동 실패:', response.error)
-        }
-      })
-      .catch(error => {
-        console.error('AI API 호출 오류:', error)
-      })
-      .finally(() => {
-        setIsAiThinking(false)
-      })
-  }, [currentPlayer, gameStatus, goBoard, isCurrentPlayerAI, getCurrentPlayerModel, handlePass, handleResignation, makeMove])
+        })
+        .catch(error => {
+          const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
+          console.error(`AI ${playerName} API 호출 오류:`, error)
+        })
+        .finally(() => {
+          setIsAiThinking(false)
+        })
+    }, 4000) // 4초 지연
+  }, [
+    currentPlayer,
+    gameStatus,
+    goBoard,
+    isCurrentPlayerAI,
+    getCurrentPlayerModel,
+    handlePass,
+    handleResignation,
+    makeMove,
+  ])
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
@@ -264,6 +293,8 @@ export default function Home() {
         handlePass={handlePass}
         handleResignation={handleResignation}
         resetGame={resetGame}
+        lastAiAction={lastAiAction}
+        isAiThinking={isAiThinking}
       />
 
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
