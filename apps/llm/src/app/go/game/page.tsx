@@ -76,17 +76,17 @@ export default function Home() {
     return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
   }
 
-  const getCurrentPlayerConfig = useCallback((): PlayerConfig => {
+  const getCurrentPlayerConfig = (): PlayerConfig => {
     return currentPlayer === PLAYER.BLACK ? blackPlayer : whitePlayer
-  }, [currentPlayer, blackPlayer, whitePlayer])
+  }
 
-  const isCurrentPlayerAI = useCallback((): boolean => {
+  const isCurrentPlayerAI = (): boolean => {
     return getCurrentPlayerConfig().isAI
-  }, [getCurrentPlayerConfig])
+  }
 
-  const getCurrentPlayerModel = useCallback((): string | undefined => {
+  const getCurrentPlayerModel = (): string | undefined => {
     return getCurrentPlayerConfig().aiModel
-  }, [getCurrentPlayerConfig])
+  }
 
   const resetGame = () => {
     setGoBoard(create2DArray(boardSize, boardSize, STONE.EMPTY))
@@ -153,12 +153,6 @@ export default function Home() {
       handleResignation()
       return
     }
-
-    // 현재 플레이어가 AI인 경우 사람이 클릭할 수 없음
-    // if (isCurrentPlayerAI()) {
-    //   console.log('AI 플레이어의 턴입니다.')
-    //   return
-    // }
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
       console.log('이곳에는 이미 돌이 놓여있습니다.')
@@ -232,7 +226,7 @@ export default function Home() {
     setIsAiThinking(true)
 
     // AI 턴 시 4초 지연으로 API 할당량 관리
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       requestAiNextStone(goBoard, currentPlayer, aiModel)
         .then(response => {
           if (response.success) {
@@ -262,16 +256,13 @@ export default function Home() {
           setIsAiThinking(false)
         })
     }, 4000) // 4초 지연
-  }, [
-    currentPlayer,
-    gameStatus,
-    goBoard,
-    isCurrentPlayerAI,
-    getCurrentPlayerModel,
-    handlePass,
-    handleResignation,
-    makeMove,
-  ])
+
+    // cleanup 함수: 컴포넌트 언마운트나 의존성 변경 시 setTimeout 취소
+    return () => {
+      clearTimeout(timeoutId)
+      setIsAiThinking(false)
+    }
+  }, [currentPlayer, gameStatus])
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
