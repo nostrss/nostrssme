@@ -47,6 +47,8 @@ export const AI_MODELS = {
   [AI_PROVIDER.OPENAI]: {
     'gpt-4o': 'GPT-4o',
     'gpt-4o-mini': 'GPT-4o Mini',
+    'gpt-4.1': 'GPT-4.1',
+    'gpt-4.1-mini': 'GPT-4.1 Mini',
   },
 } as const
 
@@ -58,6 +60,8 @@ export const AI_MODEL = {
   CLAUDE_3_5_HAIKU: 'claude-3-5-haiku',
   GPT_4O: 'gpt-4o',
   GPT_4O_MINI: 'gpt-4o-mini',
+  GPT_4_1: 'gpt-4.1',
+  GPT_4_1_MINI: 'gpt-4.1-mini',
 } as const
 
 export const PLAYER_TYPE = {
