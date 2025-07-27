@@ -231,18 +231,8 @@ export default function Home() {
         .then(response => {
           if (response.success) {
             const [row, col] = response.position
-            const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
 
-            if (response.isPass) {
-              setLastAiAction(`AI ${playerName}이 패스했습니다`)
-              handlePass()
-            } else if (response.isResignation) {
-              setLastAiAction(`AI ${playerName}이 기권했습니다`)
-              handleResignation()
-            } else {
-              setLastAiAction('')
-              handleCellClick(row, col)
-            }
+            handleCellClick(row, col)
           } else {
             const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
             console.error(`AI ${playerName} 이동 실패:`, response.error)
@@ -255,7 +245,7 @@ export default function Home() {
         .finally(() => {
           setIsAiThinking(false)
         })
-    }, 4000) // 4초 지연
+    }, 1000) // 4초 지연
 
     // cleanup 함수: 컴포넌트 언마운트나 의존성 변경 시 setTimeout 취소
     return () => {
