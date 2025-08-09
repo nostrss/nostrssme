@@ -1,16 +1,16 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { create2DArray } from '@repo/utils'
 import GoBoard from '@/components/Go/game/GoBoard'
-import { GameResult, GameStatus, Player, Stone } from '@/types'
+import { GameResult, GameStatus, Player, PlayerConfig, Stone } from '@/types'
 import {
   BOARD,
   PLAYER,
   GAME_STATUS,
   GAME_END_TYPE,
   STONE,
-  AI_MODEL,
+  PLAYER_TYPE,
 } from '@/constants/go'
 import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/game/GameInfo'
@@ -22,7 +22,8 @@ export default function Home() {
 
   // Get query parameters with defaults
   const boardSizeParam = searchParams.get('boardSize')
-  const modelParam = searchParams.get('model')
+  const blackPlayerParam = searchParams.get('blackPlayer')
+  const whitePlayerParam = searchParams.get('whitePlayerType')
   const komiParam = searchParams.get('komi')
 
   // Parse and validate boardSize
@@ -36,12 +37,29 @@ export default function Home() {
   // Parse komi with default
   const initialKomi = komiParam ? parseFloat(komiParam) : 6.5
 
-  // Use model parameter or default
-  const initialModel = modelParam || AI_MODEL.GEMINI_2_0_FLASH
+  // Parse player configurations
+  const blackPlayerConfig: PlayerConfig = {
+    type: blackPlayerParam || PLAYER_TYPE.PERSON,
+    isAI: blackPlayerParam !== PLAYER_TYPE.PERSON,
+    aiModel:
+      blackPlayerParam !== PLAYER_TYPE.PERSON
+        ? blackPlayerParam || undefined
+        : undefined,
+  }
+
+  const whitePlayerConfig: PlayerConfig = {
+    type: whitePlayerParam || PLAYER_TYPE.PERSON,
+    isAI: whitePlayerParam !== PLAYER_TYPE.PERSON,
+    aiModel:
+      whitePlayerParam !== PLAYER_TYPE.PERSON
+        ? whitePlayerParam || undefined
+        : undefined,
+  }
 
   const [boardSize] = useState(initialBoardSize)
-  const [model] = useState(initialModel)
   const [komi] = useState(initialKomi)
+  const [blackPlayer] = useState(blackPlayerConfig)
+  const [whitePlayer] = useState(whitePlayerConfig)
   const [goBoard, setGoBoard] = useState<Stone[][]>(() =>
     create2DArray(initialBoardSize, initialBoardSize, STONE.EMPTY)
   )
@@ -51,9 +69,23 @@ export default function Home() {
   const [passCount, setPassCount] = useState(0)
   const [gameStatus, setGameStatus] = useState<GameStatus>(GAME_STATUS.PLAYING)
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
+  const [isAiThinking, setIsAiThinking] = useState(false)
+  const [lastAiAction, setLastAiAction] = useState<string>('')
 
   const getPlayerStone = (currentPlayer: Player): Stone => {
     return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
+  }
+
+  const getCurrentPlayerConfig = (): PlayerConfig => {
+    return currentPlayer === PLAYER.BLACK ? blackPlayer : whitePlayer
+  }
+
+  const isCurrentPlayerAI = (): boolean => {
+    return getCurrentPlayerConfig().isAI
+  }
+
+  const getCurrentPlayerModel = (): string | undefined => {
+    return getCurrentPlayerConfig().aiModel
   }
 
   const resetGame = () => {
@@ -64,9 +96,11 @@ export default function Home() {
     setPassCount(0)
     setGameStatus(GAME_STATUS.PLAYING)
     setGameResult(null)
+    setIsAiThinking(false)
+    setLastAiAction('')
   }
 
-  const handlePass = () => {
+  const handlePass = useCallback(() => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
     const newPassCount = passCount + 1
@@ -77,7 +111,7 @@ export default function Home() {
       const result = calculateScore(goBoard, blackCaptured, whiteCaptured, komi)
       setGameResult({
         ...result,
-        endType: GAME_END_TYPE.SCORE,
+        endType: GAME_END_TYPE.TWO_PASSES,
       })
       setGameStatus(GAME_STATUS.FINISHED)
       return
@@ -86,9 +120,9 @@ export default function Home() {
     setCurrentPlayer(prevPlayer =>
       prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
     )
-  }
+  }, [gameStatus, passCount, goBoard, blackCaptured, whiteCaptured, komi])
 
-  const handleResignation = () => {
+  const handleResignation = useCallback(() => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
 
     const winner = currentPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
@@ -104,10 +138,11 @@ export default function Home() {
       endType: GAME_END_TYPE.RESIGNATION,
     })
     setGameStatus(GAME_STATUS.FINISHED)
-  }
+  }, [gameStatus, currentPlayer])
 
   const handleCellClick = (rowIndex: number, colIndex: number) => {
     if (gameStatus !== GAME_STATUS.PLAYING) return
+    if (isAiThinking) return // AI가 생각하는 중이면 클릭 막기
 
     if (rowIndex === -1 && colIndex === -1) {
       handlePass()
@@ -124,64 +159,100 @@ export default function Home() {
       return
     }
 
-    const newBoard = goBoard.map(row => [...row])
-    const playerStone = getPlayerStone(currentPlayer)
-    newBoard[rowIndex]![colIndex] = playerStone
-
-    const opponentStone =
-      playerStone === STONE.BLACK ? STONE.WHITE : STONE.BLACK
-    let capturedStones: [number, number][] = []
-
-    for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
-      if (r == null || c == null) {
-        continue
-      }
-
-      if (newBoard[r]?.[c] === opponentStone) {
-        const { stones, liberties } = getGroupInfo(r, c, newBoard)
-        if (liberties === 0) {
-          capturedStones = capturedStones.concat(stones)
-        }
-      }
-    }
-
-    capturedStones.forEach(([r, c]) => (newBoard[r]![c] = STONE.EMPTY))
-
-    if (capturedStones.length > 0) {
-      if (currentPlayer === PLAYER.BLACK) {
-        setBlackCaptured(prev => prev + capturedStones.length)
-      } else {
-        setWhiteCaptured(prev => prev + capturedStones.length)
-      }
-    }
-
-    const { liberties: ownLiberties } = getGroupInfo(
-      rowIndex,
-      colIndex,
-      newBoard
-    )
-    if (ownLiberties === 0 && capturedStones.length === 0) {
-      console.log('자살수는 둘 수 없습니다.')
-      return
-    }
-
-    // 돌을 놓으면 패스 카운트 초기화
-    setPassCount(0)
-    setGoBoard(newBoard)
-    setCurrentPlayer(prevPlayer =>
-      prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
-    )
+    makeMove(rowIndex, colIndex)
   }
 
-  useEffect(() => {
-    if (currentPlayer === PLAYER.WHITE) {
-      requestAiNextStone(goBoard, model).then(response => {
-        if (response.success) {
-          handleCellClick(response.position[0], response.position[1])
+  const makeMove = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      const newBoard = goBoard.map(row => [...row])
+      const playerStone = getPlayerStone(currentPlayer)
+      newBoard[rowIndex]![colIndex] = playerStone
+
+      const opponentStone =
+        playerStone === STONE.BLACK ? STONE.WHITE : STONE.BLACK
+      let capturedStones: [number, number][] = []
+
+      for (const [r, c] of getNeighbors(rowIndex, colIndex, boardSize)) {
+        if (r == null || c == null) {
+          continue
         }
-      })
+
+        if (newBoard[r]?.[c] === opponentStone) {
+          const { stones, liberties } = getGroupInfo(r, c, newBoard)
+          if (liberties === 0) {
+            capturedStones = capturedStones.concat(stones)
+          }
+        }
+      }
+
+      capturedStones.forEach(([r, c]) => (newBoard[r]![c] = STONE.EMPTY))
+
+      if (capturedStones.length > 0) {
+        if (currentPlayer === PLAYER.BLACK) {
+          setBlackCaptured(prev => prev + capturedStones.length)
+        } else {
+          setWhiteCaptured(prev => prev + capturedStones.length)
+        }
+      }
+
+      const { liberties: ownLiberties } = getGroupInfo(
+        rowIndex,
+        colIndex,
+        newBoard
+      )
+      if (ownLiberties === 0 && capturedStones.length === 0) {
+        console.log('자살수는 둘 수 없습니다.')
+        return
+      }
+
+      // 돌을 놓으면 패스 카운트 초기화
+      setPassCount(0)
+      setGoBoard(newBoard)
+      setCurrentPlayer(prevPlayer =>
+        prevPlayer === PLAYER.BLACK ? PLAYER.WHITE : PLAYER.BLACK
+      )
+    },
+    [goBoard, currentPlayer, boardSize]
+  )
+
+  // AI 플레이어의 수를 처리하는 useEffect
+  useEffect(() => {
+    if (gameStatus !== GAME_STATUS.PLAYING) return
+    if (!isCurrentPlayerAI()) return
+
+    const aiModel = getCurrentPlayerModel()
+    if (!aiModel) return
+
+    setIsAiThinking(true)
+
+    // AI 턴 시 4초 지연으로 API 할당량 관리
+    const timeoutId = setTimeout(() => {
+      requestAiNextStone(goBoard, currentPlayer, aiModel)
+        .then(response => {
+          if (response.success) {
+            const [row, col] = response.position
+
+            handleCellClick(row, col)
+          } else {
+            const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
+            console.error(`AI ${playerName} 이동 실패:`, response.error)
+          }
+        })
+        .catch(error => {
+          const playerName = currentPlayer === PLAYER.BLACK ? '흑' : '백'
+          console.error(`AI ${playerName} API 호출 오류:`, error)
+        })
+        .finally(() => {
+          setIsAiThinking(false)
+        })
+    }, 1000) // 4초 지연
+
+    // cleanup 함수: 컴포넌트 언마운트나 의존성 변경 시 setTimeout 취소
+    return () => {
+      clearTimeout(timeoutId)
+      setIsAiThinking(false)
     }
-  }, [currentPlayer, model])
+  }, [currentPlayer, gameStatus])
 
   return (
     <div className='flex flex-col justify-center items-center min-h-screen bg-amber-50 p-4 md:p-8 lg:p-12'>
@@ -203,6 +274,8 @@ export default function Home() {
         handlePass={handlePass}
         handleResignation={handleResignation}
         resetGame={resetGame}
+        lastAiAction={lastAiAction}
+        isAiThinking={isAiThinking}
       />
 
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />

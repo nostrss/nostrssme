@@ -11,6 +11,8 @@ export default function GameInfo({
   handlePass,
   handleResignation,
   resetGame,
+  lastAiAction,
+  isAiThinking,
 }: GameInfoProps) {
   return (
     <div className='mb-2 flex flex-row gap-4 items-center'>
@@ -19,6 +21,11 @@ export default function GameInfo({
         <span className='font-bold'>
           {currentPlayer === 'black' ? '흑' : '백'}
         </span>
+        {isAiThinking && (
+          <span className='ml-2 text-sm text-orange-600 animate-pulse'>
+            (AI 사고 중...)
+          </span>
+        )}
       </p>
       <div className='flex flex-row gap-4'>
         <span className='text-black'>흑 잡은 돌: {blackCaptured}</span>
@@ -27,6 +34,9 @@ export default function GameInfo({
       </div>
       {passCount > 0 && (
         <div className='text-sm text-gray-600'>연속 패스 횟수: {passCount}</div>
+      )}
+      {lastAiAction && (
+        <div className='text-sm text-blue-600 font-medium'>{lastAiAction}</div>
       )}
       <div className='mb-4 flex gap-4'>
         {gameStatus === GAME_STATUS.PLAYING ? (

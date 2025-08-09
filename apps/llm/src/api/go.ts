@@ -1,7 +1,16 @@
-export const requestAiNextStone = async (board: number[][], model?: string) => {
+import { Player } from '@/types'
+
+export const requestAiNextStone = async (
+  board: number[][], 
+  player: Player, 
+  model?: string
+) => {
   const response = await fetch('/api/go', {
     method: 'POST',
-    body: JSON.stringify({ board, model }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ board, player, model }),
   })
   return response.json()
 }
