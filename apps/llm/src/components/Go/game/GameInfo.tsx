@@ -13,6 +13,7 @@ export default function GameInfo({
   resetGame,
   lastAiAction,
   isAiThinking,
+  currentPlayerModel,
 }: GameInfoProps) {
   return (
     <div className='mb-2 flex flex-row gap-4 items-center'>
@@ -23,7 +24,7 @@ export default function GameInfo({
         </span>
         {isAiThinking && (
           <span className='ml-2 text-sm text-orange-600 animate-pulse'>
-            (AI 사고 중...)
+            ({currentPlayerModel} 사고 중...)
           </span>
         )}
       </p>

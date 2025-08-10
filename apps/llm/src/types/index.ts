@@ -39,6 +39,7 @@ export interface GameInfoProps {
   resetGame: () => void
   lastAiAction?: string
   isAiThinking?: boolean
+  currentPlayerModel?: string
 }
 
 export interface GameResult {

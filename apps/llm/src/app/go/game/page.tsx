@@ -17,6 +17,8 @@ import GameInfo from '@/components/Go/game/GameInfo'
 import FinishedInfo from '@/components/Go/game/FinishedInfo'
 import { requestAiNextStone } from '@/api/go'
 import GameAlert from '@/components/common/Alert'
+import { get } from 'http'
+import { Alert } from '@/constants/go/lang'
 
 export default function Home() {
   const searchParams = useSearchParams()
@@ -163,7 +165,13 @@ export default function Home() {
     }
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
-      showAlertMessage('이미 돌이 놓여 있습니다')
+      if (isCurrentPlayerAI()) {
+        showAlertMessage(
+          `${currentPlayer}${getCurrentPlayerModel()} ${Alert.AI_ERROR}`
+        )
+      } else {
+        showAlertMessage(Alert.ALREADY_STONE)
+      }
       return
     }
 
@@ -209,7 +217,13 @@ export default function Home() {
         newBoard
       )
       if (ownLiberties === 0 && capturedStones.length === 0) {
-        showAlertMessage('자살수는 둘 수 없습니다.')
+        if (isCurrentPlayerAI()) {
+          showAlertMessage(
+            `${currentPlayer}${getCurrentPlayerModel()} ${Alert.AI_ERROR}`
+          )
+        } else {
+          showAlertMessage(Alert.SUICIDE)
+        }
         return
       }
 
@@ -290,6 +304,7 @@ export default function Home() {
         resetGame={resetGame}
         lastAiAction={lastAiAction}
         isAiThinking={isAiThinking}
+        currentPlayerModel={getCurrentPlayerModel()}
       />
 
       <GoBoard goBoard={goBoard} handleCellClick={handleCellClick} />
