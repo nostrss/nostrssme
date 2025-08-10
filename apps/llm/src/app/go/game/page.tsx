@@ -17,7 +17,6 @@ import GameInfo from '@/components/Go/game/GameInfo'
 import FinishedInfo from '@/components/Go/game/FinishedInfo'
 import { requestAiNextStone } from '@/api/go'
 import GameAlert from '@/components/common/Alert'
-import { get } from 'http'
 import { Alert } from '@/constants/go/lang'
 
 export default function Home() {
@@ -247,7 +246,7 @@ export default function Home() {
 
     setIsAiThinking(true)
 
-    // AI 턴 시 4초 지연으로 API 할당량 관리
+    // AI 턴 시 1초 지연으로 API 할당량 관리
     const timeoutId = setTimeout(() => {
       requestAiNextStone(goBoard, currentPlayer, aiModel)
         .then(response => {
@@ -267,7 +266,7 @@ export default function Home() {
         .finally(() => {
           setIsAiThinking(false)
         })
-    }, 1000) // 4초 지연
+    }, 1000) // 1초 지연
 
     // cleanup 함수: 컴포넌트 언마운트나 의존성 변경 시 setTimeout 취소
     return () => {
