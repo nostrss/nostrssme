@@ -82,12 +82,12 @@ export function SetUpForm() {
                 <div className='flex items-center justify-between'>
                   <Label>Board Size</Label>
                   <div className='text-sm text-muted-foreground'>
-                    {boardSize}
+                    {`${boardSize} x ${boardSize}`}
                   </div>
                 </div>
                 <Slider
                   defaultValue={boardSize}
-                  min={5}
+                  min={3}
                   max={19}
                   step={1}
                   onValueChange={setBoardSize}
@@ -109,11 +109,13 @@ export function SetUpForm() {
                     <SelectItem value={PLAYER_TYPE.PERSON}>Person</SelectItem>
                     {Object.entries(AI_MODELS).map(([providerName, models]) => (
                       <div key={providerName}>
-                        {Object.entries(models).map(([modelKey, modelLabel]) => (
-                          <SelectItem key={modelKey} value={modelKey}>
-                            {modelLabel}
-                          </SelectItem>
-                        ))}
+                        {Object.entries(models).map(
+                          ([modelKey, modelLabel]) => (
+                            <SelectItem key={modelKey} value={modelKey}>
+                              {modelLabel}
+                            </SelectItem>
+                          )
+                        )}
                       </div>
                     ))}
                   </SelectContent>
@@ -134,11 +136,13 @@ export function SetUpForm() {
                     <SelectItem value={PLAYER_TYPE.PERSON}>Person</SelectItem>
                     {Object.entries(AI_MODELS).map(([providerName, models]) => (
                       <div key={providerName}>
-                        {Object.entries(models).map(([modelKey, modelLabel]) => (
-                          <SelectItem key={modelKey} value={modelKey}>
-                            {modelLabel}
-                          </SelectItem>
-                        ))}
+                        {Object.entries(models).map(
+                          ([modelKey, modelLabel]) => (
+                            <SelectItem key={modelKey} value={modelKey}>
+                              {modelLabel}
+                            </SelectItem>
+                          )
+                        )}
                       </div>
                     ))}
                   </SelectContent>
