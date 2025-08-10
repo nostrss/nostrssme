@@ -16,6 +16,7 @@ import { getGroupInfo, getNeighbors, calculateScore } from '@/utils/go'
 import GameInfo from '@/components/Go/game/GameInfo'
 import FinishedInfo from '@/components/Go/game/FinishedInfo'
 import { requestAiNextStone } from '@/api/go'
+import GameAlert from '@/components/common/Alert'
 
 export default function Home() {
   const searchParams = useSearchParams()
@@ -71,6 +72,8 @@ export default function Home() {
   const [gameResult, setGameResult] = useState<GameResult | null>(null)
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [lastAiAction, setLastAiAction] = useState<string>('')
+  const [showAlertDialog, setShowAlertDialog] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
 
   const getPlayerStone = (currentPlayer: Player): Stone => {
     return currentPlayer === PLAYER.BLACK ? STONE.BLACK : STONE.WHITE
@@ -86,6 +89,11 @@ export default function Home() {
 
   const getCurrentPlayerModel = (): string | undefined => {
     return getCurrentPlayerConfig().aiModel
+  }
+
+  const showAlertMessage = (message: string) => {
+    setAlertMessage(message)
+    setShowAlertDialog(true)
   }
 
   const resetGame = () => {
@@ -155,7 +163,7 @@ export default function Home() {
     }
 
     if (goBoard[rowIndex]![colIndex] !== STONE.EMPTY) {
-      console.log('이곳에는 이미 돌이 놓여있습니다.')
+      showAlertMessage('이미 돌이 놓여 있습니다')
       return
     }
 
@@ -201,7 +209,7 @@ export default function Home() {
         newBoard
       )
       if (ownLiberties === 0 && capturedStones.length === 0) {
-        console.log('자살수는 둘 수 없습니다.')
+        showAlertMessage('자살수는 둘 수 없습니다.')
         return
       }
 
@@ -262,6 +270,12 @@ export default function Home() {
         blackCaptured={blackCaptured}
         whiteCaptured={whiteCaptured}
         komi={komi}
+      />
+
+      <GameAlert
+        isOpen={showAlertDialog}
+        message={alertMessage}
+        onClose={() => setShowAlertDialog(false)}
       />
 
       <GameInfo
