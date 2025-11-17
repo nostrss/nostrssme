@@ -1,0 +1,448 @@
+---
+title: '브라우저에서 마이크 권한 얻기: getUserMedia()'
+date: '2025-11-17'
+tags: ['web', 'audio', 'getUserMedia', 'MediaDevices', 'javascript', 'typescript']
+draft: false
+summary: '웹 브라우저에서 오디오를 녹음하려면 먼저 사용자의 마이크 접근 권한을 얻어야 한다. `getUserMedia`를 호출하면 그냥 되는거 아니냐 라고 쉽게 말할 수 있다. 하지만 이게 은근히 알아둬야 할 내용이 많이 있다.'
+---
+
+## MediaDevices API란?
+
+`MediaDevices API`는 브라우저에서 카메라, 마이크 같은 미디어 입력 장치에 접근할 수 있게 해주는 Web API다. 이 API의 핵심 메서드인 `getUserMedia()`를 통해 사용자의 마이크나 카메라 스트림을 얻을 수 있다.
+
+## 기본 사용법
+
+가장 기본적인 형태는 다음과 같다:
+
+```typescript
+const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+```
+
+하지만 실제 프로덕션 코드에서는 브라우저 호환성, 에러 처리, 사용자 경험 등을 고려해야 한다.
+
+## 1. 브라우저 호환성 체크
+
+먼저 사용자의 브라우저가 MediaDevices API를 지원하는지 확인해야 한다:
+
+```typescript
+if (!navigator.mediaDevices?.getUserMedia) {
+  alert('이 브라우저는 오디오 녹음을 지원하지 않습니다.')
+  return null
+}
+```
+
+**왜 필요한가?**
+
+- 오래된 브라우저는 MediaDevices API를 지원하지 않을 수 있다
+- Optional chaining(`?.`)을 사용하여 `mediaDevices` 자체가 없는 경우도 안전하게 처리한다
+- 사용자에게 명확한 피드백을 제공하여 혼란을 방지한다
+
+## 2. MediaStreamConstraints 설정
+
+권한 요청 시 다양한 제약 조건(constraints)을 설정할 수 있다:
+
+```typescript
+const constraints: MediaStreamConstraints = {
+  audio: selectedDeviceId.value ? { deviceId: { exact: selectedDeviceId.value } } : true,
+}
+
+const stream = await navigator.mediaDevices.getUserMedia(constraints)
+```
+
+**제약 조건의 종류:**
+
+- `audio: true` - 기본 마이크 사용
+- `audio: { deviceId: { exact: "device-id" } }` - 특정 마이크 지정
+- `audio: { sampleRate: 48000 }` - 샘플레이트 지정
+- `audio: { echoCancellation: true }` - 에코 제거 활성화
+
+### 상세한 오디오 제약 조건 설정
+
+더 나은 음질과 성능을 위해 다양한 제약 조건을 함께 설정할 수 있다:
+
+```typescript
+const constraints: MediaStreamConstraints = {
+  audio: {
+    sampleRate: { ideal: 48000 }, // 샘플레이트 (Hz)
+    echoCancellation: true, // 에코 제거
+    noiseSuppression: true, // 노이즈 억제
+    autoGainControl: true, // 자동 볼륨 조절
+    channelCount: { ideal: 2 }, // 채널 수 (1: 모노, 2: 스테레오)
+  },
+}
+
+const stream = await navigator.mediaDevices.getUserMedia(constraints)
+```
+
+**각 옵션의 의미:**
+
+- `sampleRate`: 초당 샘플링 횟수. 높을수록 음질이 좋지만 데이터 크기 증가
+
+  - 음성: 16000Hz (16kHz)
+  - 일반 녹음: 44100Hz (CD 품질)
+  - 고품질: 48000Hz (48kHz)
+
+- `echoCancellation`: 스피커에서 나오는 소리가 마이크로 다시 들어가는 것을 제거
+
+  - 음성 통화: `true` (필수)
+  - 음악 녹음: `false` (원음 보존)
+
+- `noiseSuppression`: 배경 소음 제거
+
+  - 음성 녹음: `true`
+  - 음악/ASMR: `false`
+
+- `autoGainControl`: 소리가 작으면 자동으로 볼륨 증가
+
+  - 일반 녹음: `true`
+  - 전문 녹음: `false` (다이나믹 레인지 보존)
+
+- `channelCount`: 오디오 채널 수
+  - `1`: 모노 (용량 절약, 음성 통화)
+  - `2`: 스테레오 (공간감, 음악 녹음)
+
+**주의사항:**
+
+- `ideal` 키워드를 사용하면 브라우저가 최선을 다하지만, 지원하지 않아도 에러가 발생하지 않는다
+- `exact` 키워드를 사용하면 정확히 일치해야 하며, 불가능하면 `OverconstrainedError`가 발생한다
+
+```typescript
+// ideal: 가능하면 48kHz, 안 되면 다른 샘플레이트 사용
+{
+  sampleRate: {
+    ideal: 48000
+  }
+}
+
+// exact: 반드시 48kHz, 안 되면 에러
+{
+  sampleRate: {
+    exact: 48000
+  }
+}
+```
+
+## 3. 에러 처리: 권한 거부부터 장치 오류까지
+
+`getUserMedia()`는 다양한 이유로 실패할 수 있다. 각 에러를 적절히 처리하는 것이 중요하다:
+
+```typescript
+try {
+  const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  return stream
+} catch (error) {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case 'NotAllowedError':
+        alert('마이크 접근 권한이 거부되었습니다. 브라우저 설정에서 마이크 권한을 허용해주세요.')
+        break
+      case 'NotFoundError':
+        alert('오디오 입력 디바이스를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인해주세요.')
+        break
+      case 'NotReadableError':
+        alert('오디오 디바이스를 읽을 수 없습니다. 다른 애플리케이션에서 사용 중일 수 있습니다.')
+        break
+      case 'OverconstrainedError':
+        alert('요청한 오디오 설정을 만족하는 디바이스를 찾을 수 없습니다.')
+        break
+      default:
+        alert(`오디오 스트림 획득 실패: ${error.message}`)
+    }
+  }
+  return null
+}
+```
+
+### 주요 에러 타입 설명
+
+#### **NotAllowedError**
+
+- **발생 시점**: 사용자가 권한 프롬프트에서 "차단" 또는 "거부"를 클릭한 경우
+- **대응 방법**: 사용자에게 브라우저 설정에서 권한을 허용하는 방법을 안내
+
+#### **NotFoundError**
+
+- **발생 시점**: 마이크가 물리적으로 연결되어 있지 않거나, 시스템에서 인식하지 못하는 경우
+- **대응 방법**: 사용자에게 마이크 연결 상태를 확인하도록 안내
+
+#### **NotReadableError**
+
+- **발생 시점**: 마이크가 다른 애플리케이션에서 독점적으로 사용 중인 경우 (특히 Windows)
+- **대응 방법**: 다른 프로그램(Zoom, Discord 등)을 종료하도록 안내
+
+#### **OverconstrainedError**
+
+- **발생 시점**: 요청한 제약 조건(특정 deviceId, 샘플레이트 등)을 만족하는 디바이스가 없는 경우
+- **대응 방법**: 디바이스 선택을 초기화하고 기본 설정으로 재시도
+
+## 4. MediaStream 객체 이해하기
+
+`getUserMedia()`가 반환하는 `MediaStream` 객체는 오디오나 비디오 트랙의 컬렉션이다:
+
+```typescript
+const stream: MediaStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+// MediaStream의 주요 속성과 메서드
+console.log(stream.id) // 스트림의 고유 ID
+console.log(stream.active) // 스트림 활성화 여부
+
+// 오디오 트랙 가져오기
+const audioTracks = stream.getAudioTracks()
+console.log(audioTracks.length) // 일반적으로 1개의 오디오 트랙
+console.log(audioTracks[0].label) // 트랙 레이블 (예: "Built-in Microphone")
+console.log(audioTracks[0].enabled) // 트랙 활성화 여부
+```
+
+**MediaStream의 구조:**
+
+- `MediaStream`은 하나 이상의 `MediaStreamTrack` 객체를 포함한다
+- 각 트랙은 실제 미디어 소스(마이크, 카메라)를 나타낸다
+- 오디오 녹음의 경우 일반적으로 1개의 오디오 트랙을 포함한다
+
+### MediaStreamTrack으로 할 수 있는 것
+
+`MediaStreamTrack`은 실제 미디어 소스(마이크)를 제어하는 객체다. 주요 기능 3가지를 알아보자.
+
+#### 1. 트랙 정보 조회
+
+트랙의 상태와 디바이스 정보를 확인할 수 있다:
+
+```typescript
+const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+const audioTrack = stream.getAudioTracks()[0]
+
+// 기본 정보 조회
+console.log(audioTrack.kind) // "audio" (또는 "video")
+console.log(audioTrack.id) // 고유 ID (예: "abc123...")
+console.log(audioTrack.label) // 디바이스 이름 (예: "Built-in Microphone")
+console.log(audioTrack.enabled) // 활성화 여부 (true/false)
+console.log(audioTrack.readyState) // 상태: "live" (사용 중) 또는 "ended" (종료됨)
+console.log(audioTrack.muted) // 음소거 여부 (하드웨어 레벨)
+```
+
+#### 2. 트랙 제어: enabled vs stop()
+
+트랙을 제어하는 두 가지 방법이 있으며, 동작이 완전히 다르다:
+
+```typescript
+const audioTrack = stream.getAudioTracks()[0]
+
+// 방법 1: enabled 속성 (일시 정지/재개)
+audioTrack.enabled = false // 오디오 전송 중단 (마이크는 여전히 열려있음)
+console.log(audioTrack.readyState) // "live" - 여전히 살아있음
+audioTrack.enabled = true // 즉시 재개 가능
+
+// 방법 2: stop() 메서드 (완전 종료)
+audioTrack.stop() // 마이크 완전히 해제, 복구 불가능
+console.log(audioTrack.readyState) // "ended" - 종료됨
+// audioTrack.enabled = true; // 이제 소용없음, 다시 getUserMedia() 호출 필요
+```
+
+**언제 무엇을 사용할까?**
+
+| 상황                      | 사용 방법             | 이유                           |
+| ------------------------- | --------------------- | ------------------------------ |
+| 일시적 음소거 (음성 채팅) | `enabled = false`     | 빠르게 재개 가능               |
+| 녹음 완전 종료            | `stop()`              | 마이크 표시등 끄고 리소스 해제 |
+| 디바이스 전환             | `stop()` 후 새 스트림 | 새 디바이스로 변경             |
+
+#### 3. 설정 조회: getSettings()
+
+현재 적용된 실제 설정값을 확인할 수 있다:
+
+```typescript
+const audioTrack = stream.getAudioTracks()[0]
+const settings = audioTrack.getSettings()
+
+console.log(settings.deviceId) // "default" 또는 실제 디바이스 ID
+console.log(settings.sampleRate) // 48000 (Hz) - 실제 샘플레이트
+console.log(settings.sampleSize) // 16 (bits) - 비트 깊이
+console.log(settings.channelCount) // 1 (모노) 또는 2 (스테레오)
+console.log(settings.echoCancellation) // true/false - 에코 제거 적용 여부
+console.log(settings.noiseSuppression) // true/false - 노이즈 억제 적용 여부
+console.log(settings.autoGainControl) // true/false - 자동 볼륨 조절 적용 여부
+```
+
+**활용 예시: 실제 적용된 설정 확인**
+
+```typescript
+async function checkAudioSettings() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      sampleRate: { ideal: 48000 },
+      channelCount: { ideal: 2 },
+    },
+  })
+
+  const track = stream.getAudioTracks()[0]
+  const settings = track.getSettings()
+
+  console.log(`디바이스: ${track.label}`)
+  console.log(`요청: 48kHz 스테레오`)
+  console.log(`실제: ${settings.sampleRate}Hz, ${settings.channelCount}채널`)
+
+  // 출력 예시:
+  // 디바이스: Built-in Microphone
+  // 요청: 48kHz 스테레오
+  // 실제: 48000Hz, 1채널 (내장 마이크는 모노만 지원)
+}
+```
+
+이처럼 `ideal`로 요청했지만 실제로는 디바이스 성능에 따라 다른 값이 적용될 수 있다. `getSettings()`로 확인하여 실제 설정에 맞게 오디오 처리를 조정할 수 있다.
+
+## 5. 스트림 재사용 패턴
+
+매번 새로운 스트림을 요청하는 대신, 기존 스트림을 재사용하는 것이 효율적이다:
+
+```typescript
+let audioStream: MediaStream | null = null
+
+async function getAudioStream(): Promise<MediaStream | null> {
+  // 이미 활성화된 스트림이 있으면 재사용
+  if (audioStream) {
+    return audioStream
+  }
+
+  // 새로운 스트림 요청
+  try {
+    const constraints: MediaStreamConstraints = {
+      audio: true,
+    }
+    audioStream = await navigator.mediaDevices.getUserMedia(constraints)
+    return audioStream
+  } catch (error) {
+    // 에러 처리...
+    return null
+  }
+}
+```
+
+**장점:**
+
+- 불필요한 권한 프롬프트 방지 (크롬의 경우)
+- 성능 향상 (스트림 초기화 오버헤드 감소)
+- 사용자 경험 개선
+
+## 6. 스트림 정리하기
+
+사용이 끝난 스트림은 반드시 정리해야 한다:
+
+```typescript
+function stopAudioStream(): void {
+  if (audioStream) {
+    // 모든 트랙을 중지하여 마이크 사용 표시등 끄기
+    audioStream.getTracks().forEach((track) => track.stop())
+    audioStream = null
+  }
+}
+```
+
+**왜 중요한가?**
+
+- 브라우저의 마이크 사용 표시등(빨간 점)이 계속 켜져 있으면 사용자가 불안해할 수 있다
+- 시스템 리소스를 해제하여 메모리 누수를 방지한다
+- 다른 애플리케이션이 마이크를 사용할 수 있게 한다
+
+## 7. 브라우저별 차이점과 대응 전략
+
+`getUserMedia()`는 표준 API이지만, 브라우저마다 동작 방식에 중요한 차이가 있다.
+
+### Chrome (데스크톱)
+
+**특징:**
+
+- 사용자가 한 번 권한을 허용하면, 같은 도메인에서는 다시 권한을 묻지 않는다
+- 권한 상태는 브라우저 설정에 영구 저장된다
+
+```typescript
+// Chrome: 첫 호출에만 권한 프롬프트 표시
+const stream1 = await navigator.mediaDevices.getUserMedia({ audio: true })
+// 이후 호출에서는 프롬프트 없이 바로 스트림 반환
+const stream2 = await navigator.mediaDevices.getUserMedia({ audio: true })
+```
+
+### Safari (macOS/iOS)
+
+**특징:**
+
+- **중요:** 권한이 이미 허용된 상태여도 `getUserMedia()`를 호출할 때마다 사용자에게 확인 프롬프트를 표시한다
+- 이는 Safari의 프라이버시 정책으로, 사용자가 항상 마이크 접근을 인지하도록 하기 위함이다
+- 따라서 Safari에서는 스트림 재사용 패턴이 더욱 중요하다
+
+```typescript
+// Safari: 매번 프롬프트가 표시되므로 스트림을 재사용해야 함
+let audioStream: MediaStream | null = null
+
+async function getAudioStream(): Promise<MediaStream | null> {
+  // 이미 활성 스트림이 있으면 재사용 (프롬프트 방지)
+  if (audioStream && audioStream.active) {
+    return audioStream
+  }
+
+  // Safari에서는 이 호출마다 프롬프트가 표시됨
+  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  return audioStream
+}
+```
+
+**Safari 대응 전략:**
+
+1. 스트림을 최대한 재사용하여 불필요한 프롬프트를 줄인다
+2. 녹음 시작 전 사용자 액션(버튼 클릭)을 명확히 유도한다
+3. 스트림이 활성 상태인지 확인 후 재사용한다:
+
+```typescript
+// 스트림 활성 상태 확인
+if (audioStream && audioStream.active) {
+  // 재사용 가능
+  return audioStream
+} else {
+  // 새로운 스트림 요청 필요
+  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+}
+```
+
+### iOS Safari (iPhone/iPad)
+
+**특징:**
+
+- macOS Safari와 동일하게 매번 권한 프롬프트를 표시한다
+- 추가로 사용자 제스처(터치, 클릭) 내에서만 `getUserMedia()` 호출이 가능하다
+- 자동 재생 정책이 더 엄격하게 적용된다
+
+```typescript
+// iOS Safari: 반드시 사용자 액션 핸들러 내에서 호출
+button.addEventListener('click', async () => {
+  // ✅ 사용자 클릭 이벤트 내에서 호출 - 정상 작동
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+})
+
+// ❌ 페이지 로드 시 자동 호출 - 실패
+window.addEventListener('load', async () => {
+  // iOS Safari에서 거부될 수 있음
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+})
+```
+
+> 오디오 권한을 획득할때 사용자의 제스처, 액션의 컨텍스트 내에서 처리가 되어야 한다는 글과 LLM의 설명이 종종 있다.
+
+> 관련하여 MDN이나, 공식 문서를 찾지는 못했다. 하지만 `경험상` 확실히 유저의 행동으로 권한을 요청하는 것이 안전하다고 느낀 경험이 있었다
+
+### HTTPS 요구사항
+
+모든 브라우저에서 `getUserMedia()`는 보안 컨텍스트(HTTPS)에서만 동작한다:
+
+- ✅ `https://example.com`
+- ✅ `http://localhost:3000` (개발 환경)
+- ✅ `http://127.0.0.1:3000` (개발 환경)
+- ❌ `http://example.com` (프로덕션에서 사용 불가)
+
+---
+
+**참고 자료:**
+
+- [MDN - MediaDevices.getUserMedia()](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia)
+- [MDN - MediaStreamConstraints](https://developer.mozilla.org/en-US/docs/Web/API/MediaStreamConstraints)
+- [Web Audio API Specification](https://www.w3.org/TR/webaudio/)
+
+---
