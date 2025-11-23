@@ -1,10 +1,14 @@
 ---
-title: '브라우저에서 마이크 권한 얻기: getUserMedia()'
+title: '[Part1] 브라우저에서 마이크 권한 얻기: getUserMedia()'
 date: '2025-11-17'
 tags: ['web', 'audio', 'getUserMedia', 'MediaDevices', 'javascript', 'typescript']
 draft: false
 summary: '웹 브라우저에서 오디오를 녹음하려면 먼저 사용자의 마이크 접근 권한을 얻어야 한다. `getUserMedia`를 호출하면 그냥 되는거 아니냐 라고 쉽게 말할 수 있다. 하지만 이게 은근히 알아둬야 할 내용이 많이 있다.'
+images:
+  - '/static/images/thumb-web-audio.png'
 ---
+
+![Part1](/static/images/thumb-web-audio.png)
 
 ## MediaDevices API란?
 
@@ -436,8 +440,6 @@ window.addEventListener('load', async () => {
 - ✅ `http://localhost:3000` (개발 환경)
 - ✅ `http://127.0.0.1:3000` (개발 환경)
 - ❌ `http://example.com` (프로덕션에서 사용 불가)
-
----
 
 **참고 자료:**
 

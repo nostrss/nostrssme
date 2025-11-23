@@ -1,0 +1,361 @@
+---
+title: '[Part2] Web Audio API와 AudioContext 시작하기'
+date: '2025-11-22'
+tags: ['web', 'audio', 'AudioContext', 'Web Audio API', 'typescript']
+draft: false
+summary: 'MediaStream을 획득했다면 이제 본격적으로 오디오를 처리할 차례다. Web Audio API의 핵심인 AudioContext를 이해하고, 마이크 입력을 오디오 그래프에 연결하는 방법을 알아보자.'
+images:
+  - '/static/images/thumb-web-audio.png'
+---
+
+![Part2](/static/images/thumb-web-audio.png)
+
+## 들어가며
+
+[Part 1](https://blog.nostrss.me/blog/251117-audio-get-user-media)에서 `getUserMedia()`를 사용해 마이크 권한을 얻고 `MediaStream` 객체를 획득하는 방법을 다뤘다. 하지만 `MediaStream`만으로는 한계가 있다.
+
+**MediaStream만으로 할 수 있는 것:**
+
+- `<audio>` 태그에 연결하여 재생
+- MediaRecorder API로 녹화
+- WebRTC로 전송
+
+**MediaStream만으로는 할 수 없는 것:**
+
+- 실시간 오디오 처리 (음량 조절, 이퀄라이저 등)
+- 오디오 분석 (주파수 분석, 음량 측정 등)
+- 샘플 단위 접근 및 변환
+- 복잡한 오디오 그래프 구성
+
+진짜 오디오 처리를 하려면 **Web Audio API**가 필요하다.
+
+## Web Audio API란?
+
+Web Audio API는 브라우저에서 고성능 오디오 처리를 가능하게 하는 강력한 API다. 게임 사운드, 음악 앱, 오디오 이펙트, 실시간 분석 등 다양한 용도로 사용된다.
+
+### 오디오 그래프(Audio Graph) 개념
+
+Web Audio API의 핵심은 **오디오 그래프(Audio Graph)**다. 쉽게 말하면 **"소리가 흐르는 경로"를 블록으로 만드는 것**이다.
+
+마치 공장 생산라인처럼, 오디오도 여러 단계를 거쳐 처리된다:
+
+```
+[Source Node] → [Processing Node] → [Destination Node]
+    ↓                  ↓                    ↓
+  마이크 입력        음량 조절           스피커 출력
+```
+
+오디오 그래프는 이렇게 **입력 → 처리 → 출력**으로 이어지는 흐름을 만드는 것이다. 각 블록(노드)을 JavaScript 코드로 연결하면, 소리가 자동으로 그 경로를 따라 흐른다.
+
+**각 노드의 역할:**
+
+- **Source Node**: 오디오 소스 (마이크, 파일, 오실레이터 등)
+- **Processing Node**: 오디오 처리 (볼륨, 필터, 이펙트 등)
+- **Destination Node**: 최종 출력 (스피커)
+
+예를 들어 "마이크 입력을 50% 볼륨으로 줄여서 스피커로 출력"하려면, 마이크 노드 → 볼륨 조절 노드 → 스피커 노드를 순서대로 연결하면 된다.
+
+## AudioContext: Web Audio API의 심장
+
+`AudioContext`는 모든 오디오 처리의 중심이다. 오디오 노드를 생성하고 관리하는 컨테이너 역할을 한다.
+
+### AudioContext 생성하기
+
+가장 기본적인 사용법:
+
+```typescript
+const audioContext = new AudioContext()
+
+console.log(audioContext.sampleRate) // 48000 (일반적으로)
+console.log(audioContext.state) // "running"
+```
+
+**AudioContext의 주요 속성:**
+
+- `sampleRate`: 초당 샘플링 횟수 (Hz), 보통 48000Hz
+- `state`: 현재 상태 (`"suspended"`, `"running"`, `"closed"`)
+- `currentTime`: 오디오 컨텍스트가 시작된 이후 경과 시간 (초)
+
+### AudioContext의 상태
+
+AudioContext는 3가지 상태를 가진다:
+
+| 상태      | 설명                          | 전환 방법                    |
+| --------- | ----------------------------- | ---------------------------- |
+| suspended | 일시 중단 (오디오 처리 안 함) | `resume()` 호출              |
+| running   | 실행 중 (오디오 처리 중)      | 생성 시 또는 `resume()` 호출 |
+| closed    | 종료됨 (재사용 불가)          | `close()` 호출               |
+
+**브라우저 자동 재생 정책:**
+
+최신 브라우저는 사용자 액션(클릭, 터치 등) 없이 오디오를 자동 재생하는 것을 막는다. 이 때문에 `AudioContext`가 `suspended` 상태로 시작될 수 있다.
+
+```typescript
+const audioContext = new AudioContext()
+
+if (audioContext.state === 'suspended') {
+  // 사용자 클릭 이벤트 내에서 resume() 호출
+  document.addEventListener(
+    'click',
+    async () => {
+      await audioContext.resume()
+      console.log('AudioContext resumed!') // state: "running"
+    },
+    { once: true }
+  )
+}
+```
+
+## 샘플레이트(Sample Rate) 이해하기
+
+샘플레이트는 **초당 오디오 샘플을 몇 번 측정하는가**를 나타낸다.
+
+### 일반적인 샘플레이트
+
+- **44100 Hz (44.1 kHz)**: CD 음질
+- **48000 Hz (48 kHz)**: 비디오, 프로 오디오 표준
+- **16000 Hz (16 kHz)**: 음성 녹음 (용량 절약)
+- **8000 Hz (8 kHz)**: 전화 통화 품질
+
+### AudioContext의 샘플레이트
+
+`AudioContext`는 생성 시 **하드웨어 오디오 장치의 기본 샘플레이트**를 사용한다. 대부분의 최신 기기는 48kHz를 사용한다.
+
+```typescript
+const audioContext = new AudioContext()
+console.log(audioContext.sampleRate) // 보통 48000
+```
+
+**특정 샘플레이트로 생성:**
+
+```typescript
+const audioContext = new AudioContext({ sampleRate: 16000 })
+console.log(audioContext.sampleRate) // 16000
+```
+
+**주의사항:**
+
+- 브라우저/하드웨어가 지원하지 않는 샘플레이트를 요청하면 에러가 발생할 수 있다
+- `ideal` 옵션은 없으며, 정확한 값을 지정해야 한다
+- 대부분의 경우 기본값(48kHz)을 사용하고, 필요 시 소프트웨어적으로 리샘플링하는 것이 안전하다
+
+## MediaStream을 AudioContext에 연결하기
+
+이제 [Part 1](https://blog.nostrss.me/blog/251117-audio-get-user-media)에서 사용한 `getUserMedia()`와 Web Audio API를 결합해보자.
+
+### createMediaStreamSource()
+
+`createMediaStreamSource()` 메서드는 `MediaStream`을 Web Audio API의 오디오 노드로 변환한다.
+
+```typescript
+// 1. 마이크 권한 요청 및 스트림 획득
+const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+// 2. AudioContext 생성
+const audioContext = new AudioContext()
+
+// 3. MediaStream을 AudioNode로 변환
+const source = audioContext.createMediaStreamSource(stream)
+
+// source는 MediaStreamAudioSourceNode 타입의 오디오 노드다
+// 이제 다른 노드와 연결 가능
+```
+
+`createMediaStreamSource()`가 반환하는 것이 바로 `MediaStreamAudioSourceNode`다. 이 노드는 마이크 같은 실시간 오디오 입력을 Web Audio API에서 사용할 수 있게 해준다.
+
+**MediaStreamAudioSourceNode의 특징:**
+
+- **입력 전용 노드**: 오디오를 받아오기만 하고, 다른 노드로부터 입력을 받지 않음
+- **연결 가능**: `connect()` 메서드로 다른 처리 노드에 연결
+- **첫 번째 트랙 사용**: 원본 `MediaStream`의 첫 번째 오디오 트랙을 자동으로 사용
+
+### 예시: 마이크 → 스피커 연결
+
+가장 간단한 오디오 그래프: 마이크 입력을 스피커로 바로 출력
+
+```typescript
+async function connectMicToSpeaker(): Promise<void> {
+  try {
+    // 1. 마이크 스트림 획득
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+    // 2. AudioContext 생성
+    const audioContext = new AudioContext()
+
+    // 3. MediaStream을 AudioNode로 변환
+    const source = audioContext.createMediaStreamSource(stream)
+
+    // 4. destination (스피커)에 직접 연결
+    source.connect(audioContext.destination)
+
+    console.log('마이크가 스피커에 연결되었습니다!')
+    console.log(`샘플레이트: ${audioContext.sampleRate}Hz`)
+  } catch (error) {
+    console.error('오디오 연결 실패:', error)
+  }
+}
+
+// 사용자 버튼 클릭 시 실행
+document.getElementById('startButton')?.addEventListener('click', connectMicToSpeaker)
+```
+
+### 예시: 중간 노드 추가 - 음량 조절
+
+단순 연결보다는 중간에 처리 노드를 추가하는 것이 일반적이다.
+
+```typescript
+async function connectMicWithVolume(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const audioContext = new AudioContext()
+  const source = audioContext.createMediaStreamSource(stream)
+
+  // GainNode 생성 (음량 조절 노드)
+  const gainNode = audioContext.createGain()
+  gainNode.gain.value = 0.5 // 50% 볼륨
+
+  // 오디오 그래프: 마이크 → 음량 조절 → 스피커
+  source.connect(gainNode)
+  gainNode.connect(audioContext.destination)
+
+  console.log('마이크 → GainNode(50%) → 스피커')
+}
+```
+
+**오디오 그래프 시각화:**
+
+```
+[Microphone Stream]
+        ↓
+  createMediaStreamSource()
+        ↓
+   [Source Node]
+        ↓ connect()
+    [Gain Node]  ← gain.value = 0.5
+        ↓ connect()
+ [Destination (스피커)]
+```
+
+## 샘플레이트 확인 및 처리
+
+마이크의 샘플레이트와 `AudioContext`의 샘플레이트가 다를 수 있다. 실제 적용된 값을 확인하는 방법:
+
+```typescript
+async function checkSampleRates(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const audioContext = new AudioContext()
+
+  // MediaStreamTrack의 샘플레이트 확인
+  const track = stream.getAudioTracks()[0]
+  const settings = track.getSettings()
+
+  console.log(`마이크 샘플레이트: ${settings.sampleRate}Hz`)
+  console.log(`AudioContext 샘플레이트: ${audioContext.sampleRate}Hz`)
+
+  // 브라우저가 자동으로 리샘플링 수행
+  if (settings.sampleRate !== audioContext.sampleRate) {
+    console.log('⚠️ 샘플레이트 불일치 - 브라우저가 자동 리샘플링 중')
+  }
+}
+```
+
+**브라우저 동작:**
+
+- Chrome: 마이크 샘플레이트를 `AudioContext`의 샘플레이트로 자동 변환
+  > Firefox: 샘플레이트 불일치 에러 발생하여 에러가 발생한다.
+
+## AudioContext 리소스 정리
+
+`AudioContext`는 시스템 리소스를 사용하므로 사용 후 반드시 정리해야 한다.
+
+### close() 메서드
+
+```typescript
+let audioContext: AudioContext | null = null
+let stream: MediaStream | null = null
+
+async function startAudio(): Promise<void> {
+  stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  audioContext = new AudioContext()
+  const source = audioContext.createMediaStreamSource(stream)
+  source.connect(audioContext.destination)
+}
+
+function stopAudio(): void {
+  // 1. MediaStream 트랙 중지 (마이크 표시등 끄기)
+  if (stream) {
+    stream.getTracks().forEach((track) => track.stop())
+    stream = null
+  }
+
+  // 2. AudioContext 종료
+  if (audioContext) {
+    audioContext.close()
+    audioContext = null
+  }
+
+  console.log('모든 오디오 리소스 정리 완료')
+}
+```
+
+**close()의 효과:**
+
+- 모든 오디오 처리 중단
+- 시스템 오디오 리소스 해제
+- `state`가 `"closed"`로 변경
+- **재사용 불가능** (새로운 `AudioContext`를 생성해야 함)
+
+### 정리 순서
+
+올바른 정리 순서:
+
+1. **MediaStream 트랙 중지**: `track.stop()`
+2. **AudioContext 종료**: `audioContext.close()`
+3. **참조 초기화**: 변수를 `null`로 설정
+
+```typescript
+// ✅ 올바른 정리
+stream.getTracks().forEach((track) => track.stop())
+await audioContext.close()
+stream = null
+audioContext = null
+
+// ❌ 잘못된 정리 (AudioContext만 종료)
+audioContext.close() // MediaStream은 여전히 활성 상태!
+```
+
+## 크로스 브라우저 호환성
+
+### webkit prefix 처리
+
+오래된 Safari/Chrome에서는 `webkitAudioContext`를 사용해야 할 수 있다:
+
+```typescript
+const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+
+if (!AudioContextClass) {
+  alert('이 브라우저는 Web Audio API를 지원하지 않습니다.')
+} else {
+  const audioContext = new AudioContextClass()
+  console.log('AudioContext 생성 성공')
+}
+```
+
+### 전체 호환성 체크
+
+```typescript
+function isWebAudioSupported(): boolean {
+  return !!(window.AudioContext || (window as any).webkitAudioContext)
+}
+
+if (!isWebAudioSupported()) {
+  console.error('Web Audio API를 지원하지 않는 브라우저입니다.')
+}
+```
+
+**참고 자료:**
+
+- [MDN - Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API)
+- [MDN - AudioContext](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext)
+- [MDN - Using Web Audio API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API)
+
+---
