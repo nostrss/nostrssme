@@ -1,0 +1,187 @@
+---
+title: 'JavaScript Iterable과 Iterator 이해하기'
+date: '2026-01-18'
+tags: ['javascript', 'iterator', 'iterable']
+draft: false
+summary: 'JavaScript의 Iterable과 Iterator 프로토콜을 이해하고, 커스텀 Iterator를 만들어보자'
+images:
+  - '/static/images/developer-coffee.png'
+---
+
+![JavaScript Iterable과 Iterator 이해하기](/static/images/developer-coffee.png)
+
+## 들어가며
+
+예전에 함수형 프로그래밍을 공부했던 내용인데, 시간이 지나고 사용하지 않다 보니 잊어버렸다. 그래서 이번에 다시 한번 정리해보려고 한다.
+
+```javascript
+const arr = [1, 2, 3]
+
+for (const num of arr) {
+  console.log(num) // 1, 2, 3
+}
+
+console.log([...arr]) // [1, 2, 3]
+```
+
+배열뿐만 아니라 문자열, Map, Set 등 다양한 객체들이 이렇게 순회 가능한 이유는 바로 **Iterable 프로토콜**을 따르기 때문이다. 이번 글에서는 Iterable과 Iterator가 무엇인지 다시 한번 알아보고, 직접 커스텀 Iterator를 만들어보려고 한다.
+
+## Iterable과 Iterator 프로토콜
+
+### Iterable 프로토콜
+
+**Iterable**은 `Symbol.iterator` 메서드를 가진 객체이다. 이 메서드는 Iterator 객체를 반환한다.
+
+```javascript
+const arr = [1, 2, 3]
+const iterator = arr[Symbol.iterator]()
+
+console.log(typeof arr[Symbol.iterator]) // 'function'
+```
+
+JavaScript의 내장 Iterable 객체들:
+
+| 타입 | Iterable 여부 |
+|------|---------------|
+| Array | ✅ |
+| String | ✅ |
+| Map | ✅ |
+| Set | ✅ |
+| Object | ❌ |
+| Number | ❌ |
+
+### Iterator 프로토콜
+
+**Iterator**는 `next()` 메서드를 가진 객체이다. `next()`를 호출하면 `{ value, done }` 형태의 객체를 반환한다.
+
+- `value`: 현재 순회 값
+- `done`: 순회 완료 여부 (`true`면 끝)
+
+```javascript
+const arr = [1, 2, 3]
+const iterator = arr[Symbol.iterator]()
+
+console.log(iterator.next()) // { value: 1, done: false }
+console.log(iterator.next()) // { value: 2, done: false }
+console.log(iterator.next()) // { value: 3, done: false }
+console.log(iterator.next()) // { value: undefined, done: true }
+```
+
+## Iterable 여부 확인하기
+
+어떤 값이 Iterable인지 확인하는 함수를 만들어보자.
+
+```javascript
+const isIterable = (value) => {
+  return value != null && typeof value[Symbol.iterator] === 'function'
+}
+```
+
+다양한 값들로 테스트해보면:
+
+```javascript
+console.log(isIterable([1, 2, 3]))   // true  - 배열
+console.log(isIterable('abc'))       // true  - 문자열
+console.log(isIterable(123))         // false - 숫자
+console.log(isIterable(null))        // false - null
+console.log(isIterable(undefined))   // false - undefined
+console.log(isIterable({ a: 1 }))    // false - 일반 객체
+```
+
+일반 객체(`{}`)는 기본적으로 Iterable이 아니다. 그래서 `for...of`로 순회하면 에러가 발생한다.
+
+## 커스텀 Iterator 만들기: Counter
+
+이제 직접 Iterator를 구현해보자. 시작 값부터 끝 값까지 1씩 증가하는 Counter를 만들어보자.
+
+```javascript
+function createCounter(start, end) {
+  return {
+    [Symbol.iterator]() {
+      return this
+    },
+    next() {
+      if (start > end) return { done: true }
+      return { value: start++, done: false }
+    }
+  }
+}
+```
+
+이 객체는:
+1. `Symbol.iterator` 메서드가 있으므로 **Iterable**이다.
+2. `next()` 메서드가 있으므로 **Iterator**이다.
+3. `Symbol.iterator`가 자기 자신(`this`)을 반환하므로 **Iterable이면서 동시에 Iterator**이다.
+
+동작을 확인해보자:
+
+```javascript
+const counter = createCounter(1, 3)
+
+console.log(isIterable(counter)) // true
+
+console.log(counter.next()) // { value: 1, done: false }
+console.log(counter.next()) // { value: 2, done: false }
+console.log(counter.next()) // { value: 3, done: false }
+console.log(counter.next()) // { done: true }
+```
+
+Iterable이므로 `for...of`로도 순회 가능하다:
+
+```javascript
+for (const num of createCounter(1, 5)) {
+  console.log(num) // 1, 2, 3, 4, 5
+}
+```
+
+## 실전 예제: 피보나치 수열
+
+조금 더 복잡한 예제로 피보나치 수열 Iterator를 만들어보자.
+
+```javascript
+function createFibonacci(limit) {
+  let pre = 0, cur = 1
+  return {
+    [Symbol.iterator]() {
+      return this
+    },
+    next() {
+      if (pre + cur > limit) return { done: true }
+      const value = cur
+      ;[pre, cur] = [cur, pre + cur]
+      return { value, done: false }
+    }
+  }
+}
+```
+
+`limit` 값을 넘지 않는 피보나치 수를 순회한다.
+
+```javascript
+const fib = createFibonacci(10)
+
+for (const num of fib) {
+  console.log(num) // 1, 1, 2, 3, 5, 8
+}
+```
+
+spread operator로 배열로 변환할 수도 있다
+
+```javascript
+console.log([...createFibonacci(100)])
+// [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+```
+
+> **주의**: Iterator는 한 번 순회하면 소진된다. 다시 순회하려면 새로운 Iterator를 생성해야 한다.
+
+## 정리
+
+- **Iterable**: `Symbol.iterator` 메서드를 가진 객체
+- **Iterator**: `next()` 메서드를 가지고 `{ value, done }` 객체를 반환하는 객체
+- `for...of`, spread operator, 구조 분해 등은 내부적으로 Iterator 프로토콜을 사용
+- 직접 커스텀 Iterator를 만들면 원하는 순회 로직을 구현할 수 있음
+
+## 참고 자료
+
+- [MDN - Iteration protocols](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Iteration_protocols)
+- [MDN - Symbol.iterator](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Symbol/iterator)
