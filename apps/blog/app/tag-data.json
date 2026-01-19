@@ -1,7 +1,8 @@
 {
-  "javascript": 2,
-  "iterator": 1,
-  "iterable": 1,
+  "javascript": 3,
+  "iterator": 2,
+  "iterable": 2,
+  "generator": 1,
   "web": 7,
   "audio": 2,
   "audiocontext": 1,

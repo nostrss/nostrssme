@@ -1,0 +1,208 @@
+---
+title: 'Generator로 Iterator 더 쉽게 만들기'
+date: '2026-01-19'
+tags: ['javascript', 'iterator', 'iterable', 'generator']
+draft: false
+summary: 'Generator 함수를 사용하여 Iterator를 더 간결하게 구현하는 방법을 알아보자'
+images:
+  - '/static/images/developer-coffee.png'
+---
+
+![Generator로 Iterator 더 쉽게 만들기](/static/images/developer-coffee.png)
+
+## 들어가며
+
+[어제 글](/blog/260118-js-iterable)에서 커스텀 Iterator를 만들어봤다. `Symbol.iterator` 메서드와 `next()` 메서드를 직접 구현해야 했는데, 솔직히 좀 번거로웠다. 다행히 JavaScript에는 **Generator**라는 기능이 있어서, Iterator를 훨씬 쉽게 만들 수 있다.
+
+## Generator 기본 문법
+
+Generator는 `function*` 키워드로 정의한다. 별표(`*`)가 핵심이다.
+
+```javascript
+function* myGenerator() {
+  yield 1
+  yield 2
+  yield 3
+}
+```
+
+`yield` 키워드는 값을 하나씩 "양보"한다고 생각하면 된다. Generator 함수를 호출하면 바로 실행되지 않고, **Iterator 객체**를 반환한다.
+
+```javascript
+const gen = myGenerator()
+
+console.log(gen.next()) // { value: 1, done: false }
+console.log(gen.next()) // { value: 2, done: false }
+console.log(gen.next()) // { value: 3, done: false }
+console.log(gen.next()) // { value: undefined, done: true }
+```
+
+`next()`를 호출할 때마다 다음 `yield`까지 실행되고 멈춘다. 마지막 `yield` 이후에는 `done: true`가 반환된다.
+
+## Counter를 Generator로 다시 만들기
+
+어제 만들었던 `createCounter`를 다시 보자.
+
+```javascript
+// 어제의 방식
+function createCounter(start, end) {
+  return {
+    [Symbol.iterator]() {
+      return this
+    },
+    next() {
+      if (start > end) return { done: true }
+      return { value: start++, done: false }
+    }
+  }
+}
+```
+
+Generator로 다시 만들면:
+
+```javascript
+// Generator 방식
+function* createCounter(start, end) {
+  while (start <= end) {
+    yield start++
+  }
+}
+```
+
+코드가 확 줄었다. `Symbol.iterator`도, `next()`도, `{ value, done }` 객체도 직접 만들 필요가 없다. Generator가 알아서 처리해준다.
+
+```javascript
+for (const num of createCounter(1, 5)) {
+  console.log(num) // 1, 2, 3, 4, 5
+}
+
+console.log([...createCounter(1, 3)]) // [1, 2, 3]
+```
+
+## 피보나치 수열을 Generator로
+
+피보나치 수열도 마찬가지다.
+
+```javascript
+// 어제의 방식
+function createFibonacci(limit) {
+  let pre = 0, cur = 1
+  return {
+    [Symbol.iterator]() {
+      return this
+    },
+    next() {
+      if (pre + cur > limit) return { done: true }
+      const value = cur
+      ;[pre, cur] = [cur, pre + cur]
+      return { value, done: false }
+    }
+  }
+}
+```
+
+Generator로 다시 만들면:
+
+```javascript
+// Generator 방식
+function* createFibonacci(limit) {
+  let pre = 0, cur = 1
+  while (cur <= limit) {
+    yield cur
+    ;[pre, cur] = [cur, pre + cur]
+  }
+}
+```
+
+로직에만 집중할 수 있어서 훨씬 읽기 쉽다.
+
+```javascript
+console.log([...createFibonacci(100)])
+// [1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
+```
+
+## Generator의 특징
+
+### 1. Iterable이면서 Iterator
+
+Generator가 반환하는 객체는 Iterable이면서 동시에 Iterator다.
+
+```javascript
+function* gen() {
+  yield 1
+}
+
+const g = gen()
+
+// Iterator 확인
+console.log(typeof g.next) // 'function'
+
+// Iterable 확인
+console.log(typeof g[Symbol.iterator]) // 'function'
+console.log(g[Symbol.iterator]() === g) // true
+```
+
+`g[Symbol.iterator]()`가 자기 자신을 반환한다. 이게 바로 어제 수동으로 구현했던 패턴이다.
+
+### 2. 지연 평가 (Lazy Evaluation)
+
+Generator는 값이 필요할 때만 계산한다. 무한 수열도 만들 수 있다.
+
+```javascript
+function* infiniteCounter() {
+  let n = 0
+  while (true) {
+    yield n++
+  }
+}
+
+const counter = infiniteCounter()
+
+console.log(counter.next().value) // 0
+console.log(counter.next().value) // 1
+console.log(counter.next().value) // 2
+// 필요한 만큼만 가져올 수 있다
+```
+
+당연히 spread operator로 펼치면 무한 루프에 빠지니까 조심해야 한다.
+
+```javascript
+// 이렇게 하면 무한 루프에 빠진다!
+// const all = [...infiniteCounter()] // 절대 끝나지 않음 - 실행 금지!
+
+// spread operator는 done: true가 될 때까지 계속 next()를 호출하기 때문이다.
+// infiniteCounter()는 while(true)로 영원히 값을 생성하므로 끝이 없다.
+```
+
+### 3. 상태 유지
+
+Generator는 실행 컨텍스트를 유지한다. `yield`에서 멈췄다가 다음 `next()` 호출 시 이어서 실행된다.
+
+```javascript
+function* stateful() {
+  console.log('시작')
+  yield 1
+  console.log('중간')
+  yield 2
+  console.log('끝')
+}
+
+const s = stateful()
+s.next() // '시작' 출력, { value: 1, done: false }
+s.next() // '중간' 출력, { value: 2, done: false }
+s.next() // '끝' 출력, { value: undefined, done: true }
+```
+
+## 정리
+
+- Generator 함수는 `function*`로 정의하고, `yield`로 값을 반환한다
+- Generator를 사용하면 Iterator를 훨씬 간결하게 만들 수 있다
+- Generator 객체는 Iterable이면서 Iterator다
+- 지연 평가 덕분에 무한 수열도 표현할 수 있다
+
+커스텀 Iterator가 필요하다면, 대부분의 경우 Generator를 쓰는 게 더 낫다.
+
+## 참고 자료
+
+- [MDN - Generator](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Generator)
+- [MDN - function*](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Statements/function*)
