@@ -1,7 +1,9 @@
 {
-  "javascript": 3,
-  "iterator": 2,
-  "iterable": 2,
+  "javascript": 4,
+  "iterator": 3,
+  "iterable": 3,
+  "functional-programming": 1,
+  "map": 1,
   "generator": 1,
   "web": 7,
   "audio": 2,
