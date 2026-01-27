@@ -1,0 +1,515 @@
+---
+title: 'Iterable과 함께 사용하는 filter 함수'
+date: '2026-01-27'
+tags: ['javascript', 'iterator', 'iterable', 'functional-programming', 'filter', 'polymorphism']
+draft: false
+summary: 'JavaScript의 filter 함수를 이해하고, Iterable 프로토콜을 활용하여 배열뿐만 아니라 Generator, Set, 문자열 등 다양한 데이터 구조를 필터링하는 방법과 다형성의 개념을 알아보자'
+images:
+  - '/static/images/developer-coffee.png'
+---
+
+![Iterable과 함께 사용하는 filter 함수](/static/images/developer-coffee.png)
+
+## 들어가며
+
+[이전 글](/blog/260122-js-fs-map)에서 `map` 함수를 만들어봤다. 이번에는 `filter` 함수를 알아보자.
+
+`filter`는 조건에 맞는 값만 골라내는 함수다. `map`과 마찬가지로 배열의 `filter` 메서드는 익숙하지만, 사실 `filter`도 **모든 Iterable**에서 사용할 수 있다. 범용적인 `filter` 함수를 만들어보자.
+
+## 배열의 filter 메서드 복습
+
+배열의 `filter` 메서드부터 다시 보자.
+
+```javascript
+const numbers = [1, 2, 3, 4, 5]
+const evens = numbers.filter((n) => n % 2 === 0)
+
+console.log(evens) // [2, 4]
+```
+
+`filter`는 각 요소에 조건 함수를 적용해서, `true`를 반환하는 요소만 모아 **새로운 배열**을 반환한다. 원본 배열은 변경하지 않는다(불변성).
+
+```javascript
+console.log(numbers) // [1, 2, 3, 4, 5] - 원본은 그대로
+```
+
+콜백 함수는 세 가지 인자를 받을 수 있다.
+
+```javascript
+const arr = [10, 20, 30]
+arr.filter((value, index, array) => {
+  console.log(value, index, array)
+  return value >= 20
+})
+// 10 0 [10, 20, 30]
+// 20 1 [10, 20, 30]
+// 30 2 [10, 20, 30]
+```
+
+하지만 실무에서는 대부분 `value`만 사용한다.
+
+## 커스텀 filter 함수 구현하기
+
+배열의 `filter`는 편리하지만, 배열에만 사용할 수 있다. 모든 Iterable에서 동작하는 범용적인 `filter` 함수를 만들어보자.
+
+```javascript
+const filter = (f, iter) => {
+  let res = []
+  for (const a of iter) {
+    if (f(a)) res.push(a)
+  }
+  return res
+}
+```
+
+핵심은 `for...of`를 사용한다는 점이다. 배열의 인덱스를 사용하지 않고, **Iterable 프로토콜**을 따른다. 덕분에 배열뿐만 아니라 모든 Iterable에서 동작한다.
+
+조건 함수 `f(a)`가 `true`를 반환하는 경우에만 결과 배열에 추가한다.
+
+```javascript
+const log = console.log
+
+log(filter((n) => n % 2, [1, 2, 3, 4]))
+// [1, 3]
+```
+
+## 실전 예제: 상품 필터링
+
+실무에서 자주 보는 패턴이다. 상품 목록에서 특정 조건에 맞는 상품만 골라내는 경우를 보자.
+
+```javascript
+const products = [
+  { name: '반팔티', price: 15000 },
+  { name: '긴팔티', price: 20000 },
+  { name: '핸드폰케이스', price: 15000 },
+  { name: '후드티', price: 30000 },
+  { name: '바지', price: 25000 },
+]
+```
+
+### Before: 전통적인 for loop
+
+```javascript
+let over20000 = []
+for (const p of products) {
+  if (p.price >= 20000) over20000.push(p)
+}
+
+console.log(over20000)
+// [
+//   { name: '긴팔티', price: 20000 },
+//   { name: '후드티', price: 30000 },
+//   { name: '바지', price: 25000 }
+// ]
+```
+
+### After: filter 함수 사용
+
+```javascript
+log(filter((p) => p.price >= 20000, products))
+// [
+//   { name: '긴팔티', price: 20000 },
+//   { name: '후드티', price: 30000 },
+//   { name: '바지', price: 25000 }
+// ]
+```
+
+코드가 훨씬 간결하고 의도가 명확하다. 다른 조건도 쉽게 적용할 수 있다.
+
+```javascript
+// 20000원 미만 상품
+log(filter((p) => p.price < 20000, products))
+// [
+//   { name: '반팔티', price: 15000 },
+//   { name: '핸드폰케이스', price: 15000 }
+// ]
+
+// 이름에 '티'가 포함된 상품
+log(filter((p) => p.name.includes('티'), products))
+// [
+//   { name: '반팔티', price: 15000 },
+//   { name: '긴팔티', price: 20000 },
+//   { name: '후드티', price: 30000 }
+// ]
+```
+
+## 다양한 Iterable에서 사용하기
+
+`map`과 마찬가지로 `filter`도 모든 Iterable에서 동작한다.
+
+### 숫자 배열
+
+```javascript
+log(filter((n) => n % 2, [1, 2, 3, 4]))
+// [1, 3]
+```
+
+### 문자열
+
+문자열도 Iterable이다. 특정 문자를 제거할 수 있다.
+
+```javascript
+log(filter((char) => char !== 'l', 'hello'))
+// ['h', 'e', 'o']
+```
+
+결과는 배열이지만, `join`으로 다시 문자열로 만들 수 있다.
+
+```javascript
+log(filter((char) => char !== 'l', 'hello').join(''))
+// 'heo'
+```
+
+### Set
+
+Set도 Iterable이다.
+
+```javascript
+log(filter((n) => n > 3, new Set([1, 2, 3, 4, 5])))
+// [4, 5]
+```
+
+Set에서 필터링한 결과를 다시 Set으로 만들 수도 있다.
+
+```javascript
+const filtered = new Set(filter((n) => n > 3, new Set([1, 2, 3, 4, 5])))
+log(filtered)
+// Set(2) { 4, 5 }
+```
+
+### Generator
+
+Generator와 `filter`를 함께 쓰면 강력해진다.
+
+```javascript
+function* gen() {
+  yield 1
+  yield 2
+  yield 3
+  yield 4
+  yield 5
+}
+
+log(filter((n) => n % 2, gen()))
+// [1, 3, 5]
+```
+
+즉시 실행 Generator 패턴도 가능하다.
+
+```javascript
+log(
+  filter(
+    (n) => n % 2,
+    (function* () {
+      yield 1
+      yield 2
+      yield 3
+      yield 4
+      yield 5
+    })()
+  )
+)
+// [1, 3, 5]
+```
+
+### Map 객체
+
+JavaScript의 `Map` 객체도 Iterable이다. `Map`을 순회하면 `[key, value]` 형태의 배열이 나온다.
+
+```javascript
+let m = new Map()
+m.set('a', 10)
+m.set('b', 20)
+m.set('c', 30)
+
+// 값이 20 이상인 항목만 필터링
+const filtered = filter(([k, v]) => v >= 20, m)
+log(filtered)
+// [['b', 20], ['c', 30]]
+
+// 다시 Map으로 변환
+const filteredMap = new Map(filtered)
+log(filteredMap)
+// Map(2) { 'b' => 20, 'c' => 30 }
+```
+
+원본 `m`은 그대로다.
+
+```javascript
+log(m)
+// Map(3) { 'a' => 10, 'b' => 20, 'c' => 30 }
+```
+
+## 다형성 (Polymorphism)
+
+다형성이란 하나의 연산(함수)이 특정 타입이 아니라 공통된 인터페이스나 규약을 기준으로 여러 서로 다른 타입에서 의미 있게 동작하는 성질이다.
+
+우리가 만든 `filter` 함수는 배열, 문자열, Set, Generator, Map 등 **Iterable 프로토콜**을 따른 모든 타입에서 동작하기 때문에 `다형적이다`고 말할 수 있다.
+
+### 타입별 함수 vs 다형적 함수
+
+다형성이 없다면 각 타입마다 별도의 함수를 만들어야 한다.
+
+```javascript
+// 타입별로 다른 함수
+const filterArray = (f, arr) => {
+  let res = []
+  for (let i = 0; i < arr.length; i++) {
+    if (f(arr[i])) res.push(arr[i])
+  }
+  return res
+}
+
+const filterString = (f, str) => {
+  let res = []
+  for (let i = 0; i < str.length; i++) {
+    if (f(str[i])) res.push(str[i])
+  }
+  return res
+}
+
+const filterSet = (f, set) => {
+  let res = []
+  for (const item of set) {
+    if (f(item)) res.push(item)
+  }
+  return res
+}
+```
+
+이렇게 하면 타입이 추가될 때마다 함수를 계속 만들어야 한다. 코드 중복도 많고 유지보수도 어렵다.
+
+하지만 **다형적인 `filter` 함수**는 하나만 있으면 모든 Iterable을 처리할 수 있다.
+
+```javascript
+const filter = (f, iter) => {
+  let res = []
+  for (const a of iter) {
+    if (f(a)) res.push(a)
+  }
+  return res
+}
+
+// 모든 Iterable에 동일한 함수 사용
+filter((n) => n % 2, [1, 2, 3, 4]) // 배열
+filter((char) => char !== 'l', 'hello') // 문자열
+filter((n) => n > 3, new Set([1, 2, 3, 4])) // Set
+filter((n) => n % 2, gen()) // Generator
+```
+
+### 다형성이 가능한 이유
+
+왜 하나의 함수로 여러 타입을 처리할 수 있을까? 핵심은 **`for...of`는 타입을 보지 않는다**는 점이다.
+
+`for...of`는 객체가 배열인지, 문자열인지, Set인지 확인하지 않는다. 오직 **`Symbol.iterator` 메서드가 있는지**만 확인한다.
+
+```javascript
+// for...of가 체크하는 것
+if (typeof iter[Symbol.iterator] === 'function') {
+  // Iterable이면 순회 가능
+}
+```
+
+이것이 바로 **프로토콜 기반 프로그래밍**이다. 특정 타입이 아니라, **특정 프로토콜을 구현했는지**를 기준으로 동작한다.
+
+배열, 문자열, Set, Generator, Map은 모두 `Symbol.iterator`를 구현했기 때문에, 우리의 `filter` 함수에서 동일하게 동작한다.
+
+### 다형성의 장점
+
+다형성은 다음과 같은 장점이 있다.
+
+1. **재사용성**: 하나의 함수로 여러 타입 처리
+2. **일관성**: 모든 Iterable에 동일한 인터페이스 사용
+3. **확장성**: 새로운 Iterable 타입이 추가돼도 코드 수정 불필요
+4. **가독성**: 타입을 신경 쓰지 않고 로직에 집중
+
+이것이 바로 함수형 프로그래밍과 Iterable 프로토콜의 힘이다.
+
+## map과 filter 함께 사용하기
+
+`map`과 `filter`를 조합하면 더 강력해진다. 함수형 프로그래밍에서는 이를 **함수 합성(composition)**이라고 한다.
+
+### 상품 필터링과 변환
+
+20000원 이상 상품의 이름만 추출해보자.
+
+```javascript
+log(
+  map(
+    (p) => p.name,
+    filter((p) => p.price >= 20000, products)
+  )
+)
+// ['긴팔티', '후드티', '바지']
+```
+
+안쪽의 `filter`가 먼저 실행되어 조건에 맞는 상품을 걸러내고, 바깥쪽의 `map`이 이름만 추출한다.
+
+반대로 가격만 추출할 수도 있다.
+
+```javascript
+log(
+  map(
+    (p) => p.price,
+    filter((p) => p.price < 20000, products)
+  )
+)
+// [15000, 15000]
+```
+
+### Generator와 함께 사용
+
+Generator에서 짝수만 필터링한 뒤 제곱을 계산해보자.
+
+```javascript
+function* createCounter(start, end) {
+  while (start <= end) {
+    yield start++
+  }
+}
+
+log(
+  map(
+    (n) => n * n,
+    filter((n) => n % 2 === 0, createCounter(1, 10))
+  )
+)
+// [4, 16, 36, 64, 100]
+```
+
+코드가 읽기 쉽고 각 단계가 명확하다.
+
+### Map 객체 필터링과 변환
+
+Map 객체에서 특정 값만 필터링하고 변환할 수도 있다.
+
+```javascript
+let m = new Map()
+m.set('a', 10)
+m.set('b', 20)
+m.set('c', 30)
+
+// 값이 15 이상인 항목만 골라서 값을 2배로
+const result = new Map(
+  map(
+    ([k, v]) => [k, v * 2],
+    filter(([k, v]) => v >= 15, m)
+  )
+)
+
+log(result)
+// Map(2) { 'b' => 40, 'c' => 60 }
+```
+
+## 실전 예제: NodeList 필터링
+
+브라우저 환경에서 `querySelectorAll`이 반환하는 `NodeList`는 Iterable이다. 하지만 배열이 아니므로 `filter` 메서드가 없다.
+
+```javascript
+const nodeList = document.querySelectorAll('*')
+
+// 에러 발생! NodeList에는 filter 메서드가 없다
+// nodeList.filter(el => el.className)
+// TypeError: nodeList.filter is not a function
+```
+
+### Before: Array.from 사용
+
+예전에는 NodeList를 배열로 변환한 뒤 `filter`를 사용했다.
+
+```javascript
+const elemsWithClass = Array.from(document.querySelectorAll('*')).filter((el) => el.className)
+
+console.log(elemsWithClass)
+// [div.container, nav.navbar, ...]
+```
+
+### After: 커스텀 filter 함수 사용
+
+우리가 만든 `filter` 함수는 모든 Iterable에서 동작하므로 바로 사용할 수 있다.
+
+```javascript
+const elemsWithClass = filter((el) => el.className, document.querySelectorAll('*'))
+
+console.log(elemsWithClass)
+// [div.container, nav.navbar, ...]
+```
+
+코드가 더 간결하고 의도가 명확하다.
+
+특정 클래스를 가진 요소만 필터링할 수도 있다.
+
+```javascript
+const darkModeElems = filter(
+  (el) => el.className && el.className.includes('dark'),
+  document.querySelectorAll('*')
+)
+```
+
+`map`과 함께 사용하면 더 강력하다.
+
+```javascript
+// 클래스가 있는 요소의 태그명과 클래스명만 추출
+const info = map(
+  (el) => ({ tag: el.nodeName, classes: el.className }),
+  filter((el) => el.className, document.querySelectorAll('*'))
+)
+
+console.log(info)
+// [
+//   { tag: 'DIV', classes: 'container' },
+//   { tag: 'NAV', classes: 'navbar' },
+//   ...
+// ]
+```
+
+## 왜 Iterable 프로토콜이 중요한가
+
+배열의 `filter` 메서드만 사용했다면 매번 `Array.from`이나 spread operator로 변환해야 한다.
+
+```javascript
+// 문자열 → 배열 → filter
+[...'hello'].filter(c => c !== 'l')
+
+// Set → 배열 → filter
+[...new Set([1, 2, 3, 4])].filter(n => n > 2)
+
+// NodeList → 배열 → filter
+[...document.querySelectorAll('div')].filter(el => el.className)
+
+// Generator → 배열 → filter
+[...gen()].filter(n => n % 2)
+```
+
+이런 방식의 문제점:
+
+1. **배열 생성 비용**: spread operator나 `Array.from`은 모든 요소를 순회해서 새 배열을 만든다
+2. **코드 가독성**: "왜 배열로 변환하지?"라는 의문이 생긴다
+3. **일관성 부족**: Iterable마다 다른 변환 방법을 기억해야 한다
+
+하지만 Iterable 프로토콜을 이해하고 `for...of`를 사용하면, **하나의 `filter` 함수**로 모든 경우를 처리할 수 있다.
+
+```javascript
+// 모든 Iterable에 동일한 filter 함수 사용
+filter((c) => c !== 'l', 'hello')
+filter((n) => n > 2, new Set([1, 2, 3, 4]))
+filter((el) => el.className, document.querySelectorAll('div'))
+filter((n) => n % 2, gen())
+```
+
+코드가 일관되고 재사용성이 높아진다.
+
+## 정리
+
+- `filter` 함수는 조건에 맞는 값만 선택하여 새로운 배열을 반환한다
+- `for...of`를 사용하면 배열뿐만 아니라 모든 Iterable에서 동작하는 범용적인 `filter`를 만들 수 있다
+- **다형성**이란 동일한 함수가 다양한 타입에서 동작하는 것을 의미한다
+- Iterable 프로토콜을 따르면 하나의 함수로 여러 타입을 처리할 수 있다
+- `map`과 `filter`를 조합하면 강력한 데이터 처리가 가능하다
+
+## 참고 자료
+
+- [MDN - Array.prototype.filter](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Global_Objects/Array/filter)
+- [MDN - Iteration protocols](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Iteration_protocols)
+- [MDN - for...of](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Statements/for...of)
+- [MDN - Polymorphism](https://developer.mozilla.org/en-US/docs/Glossary/Polymorphism)
