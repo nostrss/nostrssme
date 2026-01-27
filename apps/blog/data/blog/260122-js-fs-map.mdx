@@ -1,9 +1,9 @@
 ---
-title: 'Iterable과 함께 사용하는 map 함수'
+title: 'Iterable 프로토콜을 따르는 map 함수를 직접 만들어보자. 그런데 뭐가 좋지?'
 date: '2026-01-22'
 tags: ['javascript', 'iterator', 'iterable', 'functional-programming', 'map']
 draft: false
-summary: 'JavaScript의 map 함수를 이해하고, Iterable 프로토콜을 활용하여 배열뿐만 아니라 Generator, Map 객체 등 다양한 데이터 구조를 변환하는 방법을 알아보자'
+summary: 'Iterable 프로토콜을 활용하여 배열뿐만 아니라 Generator, Map 객체 등 다양한 데이터 구조를 변환하는 map 함수를 직접 만들어보자'
 images:
   - '/static/images/developer-coffee.png'
 ---
@@ -22,7 +22,7 @@ images:
 
 ```javascript
 const numbers = [1, 2, 3]
-const doubled = numbers.map(a => a * 2)
+const doubled = numbers.map((a) => a * 2)
 
 console.log(doubled) // [2, 4, 6]
 ```
@@ -71,7 +71,7 @@ const map = (f, iter) => {
 ```javascript
 const log = console.log
 
-log(map(char => char.toUpperCase(), 'hello'))
+log(map((char) => char.toUpperCase(), 'hello'))
 // ['H', 'E', 'L', 'L', 'O']
 ```
 
@@ -79,7 +79,7 @@ Set도 가능하다.
 
 ```javascript
 const set = new Set([1, 2, 3])
-log(map(a => a * 2, set))
+log(map((a) => a * 2, set))
 // [2, 4, 6]
 ```
 
@@ -87,7 +87,7 @@ NodeList도 Iterable이므로 바로 사용할 수 있다(브라우저 환경).
 
 ```javascript
 //document.querySelectorAll('*')는 NodeList를 반환 (Iterable)
-console.log(map(el => el.nodeName, document.querySelectorAll('*')))
+console.log(map((el) => el.nodeName, document.querySelectorAll('*')))
 // ['HTML', 'HEAD', 'META', 'TITLE', ...]
 ```
 
@@ -102,7 +102,7 @@ function* gen() {
   yield 4
 }
 
-log(map(a => a * a, gen()))
+log(map((a) => a * a, gen()))
 // [4, 16]
 ```
 
@@ -119,7 +119,7 @@ function* createCounter(start, end) {
   }
 }
 
-log(map(n => n * 10, createCounter(1, 5)))
+log(map((n) => n * 10, createCounter(1, 5)))
 // [10, 20, 30, 40, 50]
 ```
 
@@ -217,7 +217,7 @@ console.log(typeof nodeList[Symbol.iterator]) // 'function' - Iterable은 맞음
 
 ```javascript
 // NodeList를 배열로 변환 후 map 사용
-const nodeNames = Array.from(document.querySelectorAll('*')).map(el => el.nodeName)
+const nodeNames = Array.from(document.querySelectorAll('*')).map((el) => el.nodeName)
 console.log(nodeNames)
 // ['HTML', 'HEAD', 'META', 'TITLE', 'BODY', ...]
 ```
@@ -228,7 +228,7 @@ console.log(nodeNames)
 
 ```javascript
 // NodeList에 바로 map 적용 - Array.from 없이!
-const nodeNames = map(el => el.nodeName, document.querySelectorAll('*'))
+const nodeNames = map((el) => el.nodeName, document.querySelectorAll('*'))
 console.log(nodeNames)
 // ['HTML', 'HEAD', 'META', 'TITLE', 'BODY', ...]
 ```
@@ -243,7 +243,8 @@ console.log(nodeNames)
 // 우리의 map 함수 (다시 보기)
 const map = (f, iter) => {
   let res = []
-  for (const a of iter) {  // for...of는 Iterable만 있으면 된다!
+  for (const a of iter) {
+    // for...of는 Iterable만 있으면 된다!
     res.push(f(a))
   }
   return res
@@ -258,7 +259,7 @@ const map = (f, iter) => {
 ```javascript
 // 모든 요소의 태그 이름과 클래스명 추출
 const elementInfo = map(
-  el => ({ tag: el.nodeName, classes: el.className }),
+  (el) => ({ tag: el.nodeName, classes: el.className }),
   document.querySelectorAll('*')
 )
 console.log(elementInfo)
@@ -289,6 +290,7 @@ console.log(elementInfo)
 ```
 
 이런 방식의 문제점:
+
 1. **배열 생성 비용**: spread operator나 `Array.from`은 모든 요소를 순회해서 새 배열을 만든다
 2. **코드 가독성**: "왜 배열로 변환하지?"라는 의문이 생긴다
 3. **일관성 부족**: Iterable마다 다른 변환 방법을 기억해야 한다
@@ -297,9 +299,9 @@ console.log(elementInfo)
 
 ```javascript
 // 모든 Iterable에 동일한 map 함수 사용
-map(c => c.toUpperCase(), 'abc')
-map(n => n * 2, new Set([1, 2, 3]))
-map(n => n * 2, gen())
+map((c) => c.toUpperCase(), 'abc')
+map((n) => n * 2, new Set([1, 2, 3]))
+map((n) => n * 2, gen())
 ```
 
 코드가 일관되고 재사용성이 높아진다.
@@ -310,7 +312,6 @@ map(n => n * 2, gen())
 - `for...of`를 사용하면 배열뿐만 아니라 모든 Iterable에서 동작하는 범용적인 `map`을 만들 수 있다
 - Generator, Map 객체, NodeList 등 다양한 Iterable에서 동일한 `map` 함수를 사용할 수 있다
 - Iterable 프로토콜을 이해하면 함수형 프로그래밍을 더 유연하게 적용할 수 있다
-
 
 ## 참고 자료
 
