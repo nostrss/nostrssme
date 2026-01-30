@@ -1,0 +1,328 @@
+---
+title: 'arguments에서 rest 파라미터까지'
+date: '2026-01-30'
+tags: ['javascript', 'functional-programming', 'arguments', 'rest-parameter']
+draft: false
+summary: '함수에서 가변 인자를 다루는 방법을 알아보자. 전통적인 arguments 객체부터 현대적인 rest 파라미터까지, 그리고 함수형 프로그래밍에서 왜 중요한지 살펴보자'
+images:
+  - '/static/images/developer-work.png'
+---
+
+![arguments에서 rest 파라미터까지](/static/images/developer-work.png)
+
+오늘은 본격적인 구현에 앞서서 js에서 가변 인자를 다루는 방법을 먼저 알아보려고 한다.
+
+함수를 만들다 보면 "인자가 몇 개 들어올지 모르겠는데?"라는 상황이 자주 생긴다. 예를 들어 여러 숫자를 더하는 `sum` 함수를 만든다고 해보자.
+
+```javascript
+sum(1, 2) // 3
+sum(1, 2, 3) // 6
+sum(1, 2, 3, 4, 5) // 15
+```
+
+인자 개수가 달라도 동작해야 한다. 이런 상황에서 사용하는 것이 `arguments` 객체와 `rest 파라미터`다.
+
+## arguments 객체 이해하기
+
+`arguments`는 함수 내부에서 자동으로 생성되는 **유사 배열 객체(Array-like object)**다. 함수에 전달된 모든 인자를 담고 있다.
+
+```javascript
+function showArgs() {
+  console.log(arguments)
+}
+
+showArgs(1, 2, 3)
+// Arguments(3) [1, 2, 3, callee: ƒ, Symbol(Symbol.iterator): ƒ]
+```
+
+별도로 파라미터를 선언하지 않아도 `arguments`를 통해 모든 인자에 접근할 수 있다.
+
+### 유사 배열 객체란?
+
+`arguments`는 배열처럼 생겼지만 **진짜 배열이 아니다**. 이것이 핵심이다.
+
+```javascript
+function checkArguments() {
+  console.log(Array.isArray(arguments)) // false
+  console.log(arguments.length) // 3
+  console.log(arguments[0]) // 1
+  console.log(arguments[1]) // 2
+}
+
+checkArguments(1, 2, 3)
+```
+
+인덱스로 접근할 수 있고 `length` 속성도 있지만, 배열 메서드(`map`, `filter`, `reduce` 등)는 사용할 수 없다.
+
+```javascript
+function tryArrayMethods() {
+  // 에러 발생!
+  // arguments.map(x => x * 2)
+  // TypeError: arguments.map is not a function
+}
+```
+
+### arguments로 합계 함수 만들기
+
+`arguments`를 사용해서 가변 인자 합계 함수를 만들어보자.
+
+```javascript
+function sum() {
+  let total = 0
+  for (let i = 0; i < arguments.length; i++) {
+    total += arguments[i]
+  }
+  return total
+}
+
+console.log(sum(1, 2)) // 3
+console.log(sum(1, 2, 3)) // 6
+console.log(sum(1, 2, 3, 4, 5)) // 15
+```
+
+동작은 하지만, `for` 루프를 사용해야 해서 코드가 장황하다.
+
+## arguments의 특징과 제한 ⭐
+
+`arguments`는 몇 가지 중요한 특징과 제한이 있다.
+
+### 1. 함수 내부에서만 존재
+
+`arguments`는 함수가 호출될 때 자동으로 생성된다. 함수 외부에서는 접근할 수 없다.
+
+```javascript
+// 전역에서 arguments 접근 불가
+// console.log(arguments) // ReferenceError: arguments is not defined
+
+function test() {
+  console.log(arguments) // OK
+}
+```
+
+### 2. 중첩 함수에서의 동작
+
+중첩 함수에서는 **자신만의 `arguments`**를 가진다. 외부 함수의 `arguments`에 접근하려면 별도 변수에 저장해야 한다.
+
+```javascript
+function outer() {
+  console.log('outer:', arguments[0]) // outer: 1
+
+  function inner() {
+    console.log('inner:', arguments[0]) // inner: a
+  }
+
+  inner('a', 'b')
+}
+
+outer(1, 2, 3)
+```
+
+외부 함수의 `arguments`를 내부에서 사용하려면 이렇게 해야 한다.
+
+```javascript
+function outer() {
+  const outerArgs = arguments // 별도 변수에 저장
+
+  function inner() {
+    console.log('outer args:', outerArgs[0]) // outer args: 1
+    console.log('inner args:', arguments[0]) // inner args: a
+  }
+
+  inner('a', 'b')
+}
+
+outer(1, 2, 3)
+```
+
+### 3. 화살표 함수에서는 사용 불가 ⭐⭐⭐
+
+이것이 가장 중요한 제한이다. **화살표 함수에는 `arguments`가 없다.**
+
+```javascript
+const arrowFunc = () => {
+  console.log(arguments)
+}
+
+// ReferenceError: arguments is not defined
+// arrowFunc(1, 2, 3)
+```
+
+화살표 함수 내부에서 `arguments`를 참조하면 **외부 스코프의 `arguments`**를 찾는다.
+
+```javascript
+function outer() {
+  const arrow = () => {
+    console.log(arguments) // outer의 arguments를 참조
+  }
+  arrow()
+}
+
+outer(1, 2, 3)
+// Arguments(3) [1, 2, 3, ...]
+```
+
+## rest 파라미터 사용하기 ⭐⭐⭐
+
+ES6에서 도입된 `rest 파라미터`는 `arguments`를 보다 현대적으로 다룰 수 있도록 도와준다.
+
+```javascript
+function sum(...numbers) {
+  console.log(numbers)
+  console.log(Array.isArray(numbers)) // true
+}
+
+sum(1, 2, 3)
+// [1, 2, 3]
+// true
+```
+
+`...`(spread 연산자)를 파라미터 앞에 붙이면, 전달된 인자들이 **진짜 배열**로 들어온다.
+
+### Before: arguments 사용
+
+```javascript
+function sum() {
+  let total = 0
+  for (let i = 0; i < arguments.length; i++) {
+    total += arguments[i]
+  }
+  return total
+}
+```
+
+### After: rest 파라미터 사용
+
+```javascript
+const sum = (...numbers) => {
+  return numbers.reduce((acc, cur) => acc + cur, 0)
+}
+
+console.log(sum(1, 2)) // 3
+console.log(sum(1, 2, 3)) // 6
+console.log(sum(1, 2, 3, 4, 5)) // 15
+```
+
+코드가 훨씬 간결하고, 배열 메서드를 바로 사용할 수 있다.
+
+### arguments vs rest 파라미터 비교
+
+| 특징        | arguments      | rest 파라미터 |
+| ----------- | -------------- | ------------- |
+| 타입        | 유사 배열 객체 | 진짜 배열     |
+| 배열 메서드 | 사용 불가      | 사용 가능     |
+| 화살표 함수 | 사용 불가      | 사용 가능     |
+| 명시성      | 암묵적 생성    | 명시적 선언   |
+| 가독성      | 낮음           | 높음          |
+
+### rest 파라미터의 장점
+
+1. **진짜 배열**: `map`, `filter`, `reduce` 등 배열 메서드 바로 사용
+2. **화살표 함수 지원**: 어디서든 동일하게 동작
+3. **명시적**: 함수 시그니처만 봐도 가변 인자임을 알 수 있음
+4. **구조 분해와 조합**: 일부 인자를 분리하고 나머지를 배열로 받을 수 있음
+
+```javascript
+const log = (first, second, ...rest) => {
+  console.log('first:', first) // first: 1
+  console.log('second:', second) // second: 2
+  console.log('rest:', rest) // rest: [3, 4, 5]
+}
+
+log(1, 2, 3, 4, 5)
+```
+
+**주의**: rest 파라미터는 항상 **마지막 파라미터**여야 한다.
+
+```javascript
+// 에러! rest 파라미터는 마지막이어야 함
+// const wrong = (...rest, last) => {}
+// SyntaxError: Rest parameter must be last formal parameter
+```
+
+## 실전 예제
+
+### 가변 인자 최댓값 찾기
+
+₩
+
+```javascript
+const max = (...numbers) => {
+  return numbers.reduce((a, b) => (a > b ? a : b))
+}
+
+console.log(max(1, 5, 3, 9, 2)) // 9
+console.log(max(10, 20)) // 20
+```
+
+### 문자열 합치기
+
+```javascript
+const concat = (separator, ...strings) => {
+  return strings.join(separator)
+}
+
+console.log(concat('-', 'a', 'b', 'c')) // 'a-b-c'
+console.log(concat(', ', 'apple', 'banana', 'cherry')) // 'apple, banana, cherry'
+```
+
+첫 번째 인자는 구분자로, 나머지는 합칠 문자열로 사용한다.
+
+### 로깅 유틸리티
+
+```javascript
+const log = (level, ...messages) => {
+  const timestamp = new Date().toISOString()
+  console.log(`[${timestamp}] [${level}]`, ...messages)
+}
+
+log('INFO', 'Server started', 'Port: 3000')
+// [2026-01-30T12:00:00.000Z] [INFO] Server started Port: 3000
+
+log('ERROR', 'Connection failed', { host: 'localhost', port: 5432 })
+// [2026-01-30T12:00:00.000Z] [ERROR] Connection failed { host: 'localhost', port: 5432 }
+```
+
+## go 함수 맛보기
+
+이제 함수형 프로그래밍 자주 보이는 `go` 함수를 간단히 구현해보자. `go`는 값과 함수들을 받아서 **파이프라인처럼** 순차적으로 실행한다.
+
+```javascript
+const go = (...args) => {
+  return args.reduce((acc, f) => f(acc))
+}
+```
+
+이 함수는 rest 파라미터로 모든 인자를 배열로 받은 뒤, `reduce`로 순차 실행한다.
+
+```javascript
+const add10 = (x) => x + 10
+const multiply2 = (x) => x * 2
+const subtract5 = (x) => x - 5
+
+const result = go(
+  5, // 초기값
+  add10, // 5 + 10 = 15
+  multiply2, // 15 * 2 = 30
+  subtract5 // 30 - 5 = 25
+)
+
+console.log(result) // 25
+```
+
+첫 번째 인자가 초기값이 되고, 이후 함수들이 순서대로 적용된다. rest 파라미터 덕분에 함수를 원하는 만큼 전달할 수 있다.
+
+## 정리
+
+- `arguments`는 함수 내부에서 자동 생성되는 유사 배열 객체다
+- `arguments`는 화살표 함수에서 사용할 수 없고, 배열 메서드도 사용 불가
+- `rest 파라미터(...)`는 `arguments`의 현대적인 대안이다
+- rest 파라미터는 **진짜 배열**이므로 `map`, `filter`, `reduce` 등을 바로 사용할 수 있다
+- rest 파라미터는 항상 **마지막 파라미터**여야 한다
+- 가변 인자를 다루어서 `go`라는 함수를 구현할 수 있고, 이는 함수형 프로그래밍에서 매우 유용하다.
+
+## 참고 자료
+
+- [MDN - arguments 객체](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Functions/arguments)
+- [MDN - Rest 파라미터](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Functions/rest_parameters)
+- [MDN - 화살표 함수](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Functions/Arrow_functions)
+- [MDN - Spread 문법](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Operators/Spread_syntax)
