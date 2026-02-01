@@ -1,0 +1,209 @@
+---
+title: '맛있는 코드를 위한 레시피, Curry 🍛'
+date: '2026-02-01'
+tags: ['javascript', 'functional-programming', 'curry', 'refactoring']
+draft: false
+summary: '매일 쓰는 함수에 Curry를 곁들이면? 부분 적용부터 가독성 향상까지, 코드를 더 맛있게(깔끔하게) 만들어주는 Curry 함수에 대해 알아보자.'
+images:
+  - '/static/images/developer-work.png'
+---
+
+![Curry Function](/static/images/developer-work.png)
+
+`go`, `pipe`를 통해 함수를 합성하고 순차적으로 실행하는 방법을 알아봤다. 이번에는 여기에 "매운맛"을 더해줄... 아니, 코드를 훨씬 더 맛있게 만들어줄 **Curry(커리)** 함수에 대해 알아보자.
+
+## Curry 함수란?
+
+**"함수에 인자를 하나씩 전달하다가, 필요한 인자가 모두 모이면 그때 실행한다."**
+
+필요한 인자가 부족하면? **나머지 인자를 기다리는 새로운 함수를 반환**한다.
+
+즉,함수를 값으로 다루면서 받아둔 함수를 내가 원하는 시점에 평가시킬 수 있게 도와주는 함수이다.
+
+간단하게 `curry` 함수를 구현해보면 대략 이런 모양이다.
+
+```javascript
+const curry =
+  (f) =>
+  (a, ..._) =>
+    _.length ? f(a, ..._) : (..._) => f(a, ..._)
+```
+
+(물론 실제 라이브러리들은 이보다 복잡하게 구현되어 있지만, 개념은 이렇다.)
+
+이제 이 `curry`를 어떻게 써먹는지, 그리고 코드가 어떻게 변화하는지 살펴보자.
+
+## 코드 개선하기: 중첩 함수에서 Curry까지
+
+우리가 처리해야 할 데이터와 로직은 다음과 같다.
+**"상품 목록에서 가격이 20,000원 미만인 상품들의 가격 총합을 구해서 출력하라."**
+
+### 1단계: 가독성이 떨어지는 중첩 함수
+
+가장 먼저 떠오르는(혹은 흔히 작성하는) 방식이다.
+
+```javascript
+log(
+  reduce(
+    add,
+    map(
+      (p) => p.price,
+      filter((p) => p.price < 20000, products)
+    )
+  )
+)
+```
+
+**문제점**:
+
+- 코드를 **안쪽에서 바깥쪽으로** 해석해야 한다.
+- `filter` -> `map` -> `reduce` -> `log` 순서인데, 코드는 정반대로 배치되어 있다.
+- 괄호 지옥. `))))`
+
+### 2단계: go 함수로 순서 뒤집기
+
+이전 글에서 다룬 `go` 함수를 써보자.
+
+```javascript
+go(
+  products,
+  (products) => filter((p) => p.price < 20000, products), // 20000 미만인 상품들
+  (products) => map((p) => p.price, products), // 20000 미만인 상품들의 가격
+  (prices) => reduce(add, prices), // 20000 미만인 상품들의 가격 총합
+  log
+)
+```
+
+**개선점**:
+
+- 읽는 순서가 **위에서 아래(좌->우)**로 바꼈다.
+- 논리적 흐름과 코드 흐름이 일치한다.
+
+**아쉬운 점**:
+
+- 매번 `products => filter(..., products)` 처럼 인자를 받아서 넘겨주는 보일러플레이트(익명 함수)를 작성해야 한다.
+
+### 3단계: Curry를 만난 함수들
+
+만약 `map`, `filter`, `reduce` 함수가 `curry`로 감싸져 있다면 어떨까?
+
+기존의 `map`, `filter`, `reduce` 함수들은 인자를 모두 받아야 실행됐다.
+
+```javascript
+const map = (f, iter) => {
+  let res = []
+  for (const a of iter) {
+    res.push(f(a))
+  }
+  return res
+}
+
+const filter = (f, iter) => {
+  let res = []
+  for (const a of iter) {
+    if (f(a)) res.push(a)
+  }
+  return res
+}
+
+const reduce = (f, acc, iter) => {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    // 1번째 값으로 초기화
+    acc = iter.next().value
+  }
+  for (const a of iter) {
+    acc = f(acc, a)
+  }
+  return acc
+}
+```
+
+이 함수들에 `curry`를 적용하면 다음과 같이 변한다.
+
+```javascript
+const map = curry((f, iter) => {
+  let res = []
+  for (const a of iter) {
+    res.push(f(a))
+  }
+  return res
+})
+
+const filter = curry((f, iter) => {
+  let res = []
+  for (const a of iter) {
+    if (f(a)) res.push(a)
+  }
+  return res
+})
+
+const reduce = curry((f, acc, iter) => {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    acc = iter.next().value
+  }
+  for (const a of iter) {
+    acc = f(acc, a)
+  }
+  return acc
+})
+```
+
+이렇게 되면 함수를 다음과 같이 호출할 수 있다.
+
+```javascript
+go(
+  products,
+  (products) => filter((p) => p.price < 20000)(products),
+  (products) => map((p) => p.price)(products),
+  (products) => reduce(add)(products),
+  log
+)
+```
+
+`filter((p) => p.price < 20000)`를 먼저 호출하면, 아직 `products`(두 번째 인자)를 받지 못했으므로 **함수를 반환**한다. 그리고 그 반환된 함수에 `products`를 넣어주면 비로소 실행된다.
+
+### 4단계: 최종 형태 ⭐
+
+자, 3단계의 코드를 자세히 보자.
+
+```javascript
+;(products) => filter((p) => p.price < 20000)(products)
+```
+
+이건 `a => f(a)` 형태다. 즉, 그냥 `f`와 같다.
+`go` 함수는 앞선 함수의 결과를 다음 함수의 인자로 전달한다.
+`filter(p => p.price < 20000)` 자체가 **"리스트를 받아서 필터링을 수행하는 함수"**가 된 것이다.
+
+그러면 굳이 화살표 함수로 감쌀 필요가 없어진다.
+
+```javascript
+go(
+  products,
+  filter((p) => p.price < 20000),
+  map((p) => p.price),
+  reduce(add),
+  log
+)
+```
+
+**결과**:
+
+- 코드가 마치 **문장**처럼 읽힌다.
+  1. `products`를 가져와서
+  2. `filter` (가격 20,000 미만)
+  3. `map` (가격만 추출)
+  4. `reduce` (다 더하기)
+  5. `log` (출력)
+- 불필요한 인자 선언 (`products => ...`)이 모두 사라졌다.
+
+## 실무에서 사용하기
+
+Curry를 사용하면 함수의 일부 인자만 미리 넣어서 새로운 함수를 만들 수 있다.
+
+커리함수는 f(n,o,s,t,r,s,s)를 f(n)(o)(s)(t)(r)(s)(s) 와 같이 다중 callable 프로세스 형태로 변환하는 기술이다. 보통 자바스크립트에서의 커리되어진 함수는 평소처럼 호출도 하고 만약에 인수들이 충분하지 않을 때에는 partial을 반환한다.
+
+이를 실무에서 사용하면 공통된 설정이나 반복되는 인자를 매번 넣을 필요 없이 재사용할 수 있을 것 같다.
+
+검색을 해보니 자바스크립트에만 존재하는 것은 아니고 다른 언어에도 존재하는 고급 스킬이라고 하니, 꼭 익혀두도록 해야겠다
