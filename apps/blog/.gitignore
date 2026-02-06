@@ -49,3 +49,4 @@ yarn-error.log*
 .vscode
 CLAUDE.md
 .claude
+AGENTS.md
