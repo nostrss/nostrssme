@@ -1,0 +1,300 @@
+---
+title: 'flat 함수를 이터러블로 구현해보자. L.flatten과 L.deepFlat 🪆'
+date: '2026-02-14'
+tags: ['javascript', 'functional-programming', 'lazy-evaluation', 'iterable', 'flatten']
+draft: false
+summary: '중첩 배열을 펼치는 flat 함수를 이터러블로 구현해보자. 그리고 깊은 중첩까지 재귀적으로 펼치는 L.deepFlat을 구현해보자. 그리고 yield * 위임 문법을 알아보자.'
+images:
+  - '/static/images/walking.png'
+---
+
+![중첩을 펼쳐라! L.flatten과 L.deepFlat](/static/images/walking.png)
+
+## L.flatten
+
+### 배열을 펼치고 싶을 때
+
+배열 안에 배열이 있을 때, 이를 하나로 합치고 싶은 경우가 자주 있다.
+
+```javascript
+const arr = [
+  [1, 2],
+  [3, 4],
+  [5, 6, 7],
+]
+```
+
+스프레드 연산자로 풀어낼 수 있다.
+
+```javascript
+;[...[1, 2], ...[3, 4], ...[5, 6, 7]]
+// [1, 2, 3, 4, 5, 6, 7]
+```
+
+하지만 이 방식은 **모든 값을 즉시 메모리에 올린다.** 만약 엄청나게 큰 배열이라면? 혹은 필요한 값이 앞에서 몇 개뿐이라면? 지연 평가로 하나씩 꺼내는 방식이 훨씬 효율적이다.
+
+### isIterable 헬퍼
+
+`L.flatten`을 구현하려면 먼저 "이 값이 이터러블인지" 판별하는 함수가 필요하다.
+
+```javascript
+const isIterable = (a) => a && a[Symbol.iterator]
+```
+
+`Symbol.iterator` 메서드가 있으면 이터러블이다. 간단하다. 문자열도 이터러블이지만, `L.flatten`에서는 문자열을 펼치고 싶지 않은 경우가 많으니 필요하면 추가 조건을 넣을 수 있다.
+
+### L.flatten 구현
+
+```javascript
+L.flatten = function* (iter) {
+  for (const a of iter) {
+    if (isIterable(a)) {
+      for (const b of a) {
+        yield b
+      }
+    } else {
+      yield a
+    }
+  }
+}
+```
+
+바깥 이터러블을 순회하면서, 각 요소가 이터러블이면 그 안의 값을 하나씩 `yield`하고, 이터러블이 아니면 그 값 자체를 `yield`한다. **1단계만 펼친다**는 점이 중요하다.
+
+### 지연 동작 확인
+
+제너레이터이므로, 호출해도 즉시 실행되지 않는다.
+
+```javascript
+const it = L.flatten([
+  [1, 2],
+  [3, 4],
+  [5, 6, 7],
+])
+
+console.log(it.next()) // { value: 1, done: false }
+console.log(it.next()) // { value: 2, done: false }
+console.log(it.next()) // { value: 3, done: false }
+```
+
+`next()`를 호출할 때마다 하나씩 값을 꺼낸다. 아직 꺼내지 않은 `[5, 6, 7]`은 아직 건드리지도 않았다.
+
+### take와 조합
+
+[이전에 만들었던](/blog/260201-js-fs-range-take) `take`와 조합하면, 원하는 만큼만 꺼낼 수 있다.
+
+```javascript
+take(
+  3,
+  L.flatten([
+    [1, 2],
+    [3, 4],
+    [5, 6, 7],
+  ])
+)
+// [1, 2, 3]
+```
+
+`[5, 6, 7]`은 순회하지도 않는다. 3개만 필요했으니 3개만 가져왔다. 이것이 지연 평가의 힘이다.
+
+### flatten = L.flatten + takeAll
+
+[이전 포스트](/blog/260209-js-fs-lazy-composition)에서 봤던 패턴이 여기서도 그대로 적용된다.
+
+```javascript
+const flatten = pipe(L.flatten, takeAll)
+```
+
+**지연 함수 + takeAll = 즉시 함수.** `L.map + takeAll = map`, `L.filter + takeAll = filter`였던 것처럼, `L.flatten + takeAll = flatten`이다.
+
+```javascript
+flatten([
+  [1, 2],
+  [3, 4],
+  [5, 6, 7],
+])
+// [1, 2, 3, 4, 5, 6, 7]
+```
+
+모든 값을 꺼내서 배열로 만든다. 동일한 패턴이 반복되고 있다.
+
+## yield \*
+
+### for...of + yield를 더 간결하게
+
+`L.flatten` 구현을 다시 보자.
+
+```javascript
+L.flatten = function* (iter) {
+  for (const a of iter) {
+    if (isIterable(a)) {
+      for (const b of a) {
+        yield b
+      }
+    } else {
+      yield a
+    }
+  }
+}
+```
+
+안쪽의 `for (const b of a) { yield b }` 부분이 눈에 띈다. 이터러블을 순회하면서 각 값을 그대로 `yield`하는 코드다. 이 패턴은 `yield *`로 대체할 수 있다.
+
+### yield \* 문법
+
+```javascript
+yield * iterable
+```
+
+이 한 줄은 다음과 **정확히 같은 동작**을 한다.
+
+```javascript
+for (const val of iterable) yield val
+```
+
+`yield *`는 이터러블의 모든 값을 **위임(delegate)** 한다. 제너레이터가 다른 이터러블에게 "너의 값을 대신 내보내줘"라고 하는 것이다.
+
+배열, 문자열, 다른 제너레이터 등 **이터러블이면 무엇이든** `yield *` 뒤에 올 수 있다.
+
+```javascript
+function* gen() {
+  yield* [1, 2, 3] // 배열
+  yield* 'abc' // 문자열
+  yield* L.range(4, 7) // 다른 제너레이터
+}
+
+;[...gen()] // [1, 2, 3, "a", "b", "c", 4, 5, 6]
+```
+
+또한 `yield *`는 위임한 제너레이터의 **반환값**을 받을 수도 있다.
+
+```javascript
+function* inner() {
+  yield 1
+  yield 2
+  return 'done'
+}
+
+function* outer() {
+  const result = yield* inner()
+  console.log(result) // "done"
+}
+```
+
+`yield *inner()`는 `inner`의 `yield` 값들을 모두 내보낸 뒤, `inner`의 `return` 값을 `result`에 할당한다. 단순한 `for...of`로는 이 반환값을 받을 수 없다. `for...of`는 `done: true`인 시점의 `value`를 무시하기 때문이다.
+
+> 더 자세한 내용은 [MDN - yield\*](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Operators/yield*) 문서를 참고하자.
+
+### L.flatten을 yield \*로 리팩터링
+
+```javascript
+L.flatten = function* (iter) {
+  for (const a of iter) {
+    if (isIterable(a)) {
+      yield* a
+    } else {
+      yield a
+    }
+  }
+}
+```
+
+`for (const b of a) { yield b }`가 `yield *a` 한 줄로 줄었다. 동작은 완전히 동일하다. 코드가 더 읽기 쉬워졌다.
+
+## L.deepFlat
+
+### 1단계 이상의 중첩
+
+`L.flatten`은 **1단계만** 펼친다. 그렇다면 이런 경우는 어떻게 할까?
+
+```javascript
+const deeply = [1, [2, [3, 4], [[5]]]]
+```
+
+`L.flatten`으로 펼치면 이렇게 된다.
+
+```javascript
+;[...L.flatten(deeply)]
+// [1, 2, [3, 4], [[5]]]
+```
+
+바깥 한 겹만 벗겨졌다. `[3, 4]`와 `[[5]]`는 여전히 중첩된 채로 남아있다.
+
+깊은 중첩까지 전부 펼치려면 **재귀**가 필요하다.
+
+### L.deepFlat 구현
+
+```javascript
+L.deepFlat = function* f(iter) {
+  for (const a of iter) {
+    if (isIterable(a)) {
+      yield* f(a)
+    } else {
+      yield a
+    }
+  }
+}
+```
+
+핵심은 `yield *f(a)`다. `L.flatten`에서는 `yield *a`로 한 단계만 펼쳤지만, 여기서는 **`f(a)`를 재귀 호출**해서 그 결과를 위임한다.
+
+동작을 풀어보면 이렇다.
+
+1. `iter`를 순회하며 각 요소 `a`를 확인한다.
+2. `a`가 이터러블이면, `f(a)`를 호출해서 **다시 그 안을 순회**한다.
+3. `a`가 이터러블이 아니면, 더 이상 들어갈 곳이 없으니 `yield`한다.
+4. 재귀가 바닥에 닿을 때까지 반복한다.
+
+### 실행 결과
+
+```javascript
+;[...L.deepFlat([1, [2, [3, 4], [[5]]]])]
+// [1, 2, 3, 4, 5]
+```
+
+아무리 깊게 중첩되어 있어도 모든 값을 하나의 평평한 이터러블로 펼쳐낸다.
+
+### 기명 함수 표현식
+
+한 가지 문법적인 포인트가 있다. `function* f(iter)`에서 `f`는 **기명 함수 표현식(Named Function Expression)** 의 이름이다.
+
+일반 함수 표현식과 비교해보자.
+
+```javascript
+// 익명 함수 표현식 — 내부에서 자기 자신을 참조할 수 없다
+const factorial = function (n) {
+  return n <= 1 ? 1 : n * factorial(n - 1)
+  // factorial은 외부 변수를 참조하는 것이다
+}
+
+// 기명 함수 표현식 — f는 함수 내부에서만 접근 가능하다
+const factorial = function f(n) {
+  return n <= 1 ? 1 : n * f(n - 1)
+  // f는 함수 자신의 이름이다
+}
+
+console.log(typeof f) // "undefined" — 외부에서는 f에 접근할 수 없다
+```
+
+익명 함수 표현식에서 `factorial`은 외부 변수 바인딩을 통해 자기 자신을 참조한다. 만약 `factorial`이 다른 값으로 재할당되면 재귀가 깨진다. 반면 기명 함수 표현식의 `f`는 **함수 자체에 바인딩된 이름**이므로, 외부에서 무슨 일이 일어나도 안전하게 자기 자신을 참조할 수 있다.
+
+`L.deepFlat`에서도 같은 이유로 기명 함수 표현식을 사용한다.
+
+```javascript
+L.deepFlat = function* f(iter) {
+  // ...
+  yield* f(a) // f는 외부 변수가 아닌, 이 함수 자체의 이름이다
+}
+```
+
+> 더 자세한 내용은 [MDN - 함수 표현식 (Named function expression)](https://developer.mozilla.org/ko/docs/Web/JavaScript/Reference/Operators/function#%EB%AA%85%EB%AA%85_%ED%95%A8%EC%88%98_%ED%91%9C%ED%98%84%EC%8B%9D) 문서를 참고하자.
+
+## 정리
+
+이번에 다룬 내용을 요약하면 이렇다.
+
+- **L.flatten** — 중첩 이터러블을 **1단계** 펼치는 지연 평가 함수
+- **L.deepFlat** — 중첩 이터러블을 **재귀적으로 완전히** 펼치는 지연 평가 함수
+- **yield \*** — `for...of + yield` 패턴을 한 줄로 대체하는 제너레이터 위임 문법
+
+그리고 역시 같은 패턴이 반복된다.
