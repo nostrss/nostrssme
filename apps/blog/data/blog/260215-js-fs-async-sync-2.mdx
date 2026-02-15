@@ -1,0 +1,328 @@
+---
+title: 'go, pipe, reduce에서 비동기 제어 — Promise를 값으로 다루는 함수 합성'
+date: '2026-02-15T14:00:00'
+tags: ['javascript', 'functional-programming', 'promise', 'async', 'reduce', 'go', 'pipe']
+draft: false
+summary: 'go, pipe는 reduce로 구현되어 있다. reduce 하나만 고치면 비동기 상황에서도 함수 합성이 안전하게 동작한다. 유명 함수와 재귀로 동기 구간의 성능을 지키면서, Promise.reject까지 안전하게 처리하는 방법을 알아보자.'
+images:
+  - '/static/images/subway.png'
+---
+
+![go, pipe, reduce에서 비동기 제어](/static/images/subway.png)
+
+## go에서 비동기가 터지는 순간
+
+먼저 이전에 만들어둔 코드들을 다시 보자.
+
+```javascript
+const reduce = (f, acc, iter) => {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    acc = iter.next().value
+  }
+  for (const a of iter) {
+    acc = f(acc, a)
+  }
+  return acc
+}
+
+const go = (...args) => reduce((a, f) => f(a), args)
+
+const pipe =
+  (f, ...fs) =>
+  (...as) =>
+    go(f(...as), ...fs)
+```
+
+동기 함수만 쓸 때는 잘 동작한다.
+
+```javascript
+go(
+  1,
+  (a) => a + 10,
+  (a) => a + 100,
+  console.log
+)
+// 111
+```
+
+그런데 중간에 Promise를 반환하는 함수가 끼어들면?
+
+```javascript
+go(
+  1,
+  (a) => a + 10,
+  (a) => Promise.resolve(a + 100),
+  (a) => a + 1000,
+  console.log
+)
+// [object Promise]1000
+```
+
+`111`이 나와야 하는데, `[object Promise]1000`이 찍힌다.
+
+원인은 간단하다. 세 번째 함수가 `Promise.resolve(111)`을 반환하면, `acc`에 Promise 객체가 들어간다. 그런데 네 번째 함수 `(a) => a + 1000`은 이 **Promise 객체 자체**를 받는다. `Promise + 1000`은 문자열 변환이 일어나서 `"[object Promise]1000"`이 되는 것이다.
+
+## reduce만 고치면 전부 해결된다
+
+여기서 핵심적인 구조를 짚고 넘어가자.
+
+- `go`는 `reduce`로 구현되어 있다.
+- `pipe`는 `go`로 구현되어 있다.
+
+**제어권이 전부 `reduce`에 있다.** reduce 하나만 비동기를 다룰 수 있게 고치면, go와 pipe는 자동으로 비동기 대응이 된다.
+
+## 단순한 해결법과 그 한계
+
+가장 먼저 떠오르는 방법은 `acc`가 Promise인지 확인하고, `.then()`으로 이어붙이는 것이다.
+
+```javascript
+const reduce = (f, acc, iter) => {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    acc = iter.next().value
+  }
+  for (const a of iter) {
+    acc = acc instanceof Promise ? acc.then((acc) => f(acc, a)) : f(acc, a)
+  }
+  return acc
+}
+```
+
+이렇게 하면 동작은 한다.
+
+```javascript
+go(
+  1,
+  (a) => a + 10,
+  (a) => Promise.resolve(a + 100),
+  (a) => a + 1000,
+  console.log
+)
+// 1111
+```
+
+결과는 맞다. 그런데 **성능 문제**가 있다.
+
+한 번 Promise를 만나면, 그 이후 모든 함수가 `.then()` 체인으로 실행된다. `(a) => a + 1000`은 완전한 동기 함수인데도, 앞에서 Promise가 한 번 나왔다는 이유로 비동기 체인에 묶인다.
+
+즉, **동기 구간까지 불필요하게 비동기로 돌아가는 것**이다.
+
+## 유명 함수와 재귀로 해결하기
+
+좀 더 세련된 방법이 있다. 핵심 아이디어는 이렇다.
+
+- **동기 구간은 while 루프로 처리한다.** 하나의 콜스택에서 빠르게 돌린다.
+- **Promise를 만나면 `.then(recur)`로 재귀한다.** Promise가 풀린 후, 다시 while 루프로 돌아온다.
+
+이렇게 하면 동기 구간은 동기로, 비동기 구간만 비동기로 처리된다.
+
+먼저 **유명 함수(Named Function Expression)** 를 알고 가자.
+
+```javascript
+const reduce = function recur(f, acc, iter) {
+  // 여기서 recur라는 이름으로 자기 자신을 참조할 수 있다
+}
+```
+
+`const reduce = function recur() {}`에서 `recur`는 함수 내부에서만 사용할 수 있는 이름이다. 바깥에서 `recur()`를 호출할 수는 없지만, 함수 안에서는 `recur()`로 자기 자신을 호출할 수 있다. 외부에는 `reduce`라는 이름만 노출된다.
+
+이제 전체 코드를 보자.
+
+```javascript
+const reduce = function recur(f, acc, iter) {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    acc = iter.next().value
+  }
+  while (true) {
+    const { done, value } = iter.next()
+    if (done) return acc
+    acc = f(acc, value)
+    if (acc instanceof Promise) {
+      return acc.then((acc) => recur(f, acc, iter))
+    }
+  }
+}
+```
+
+### 단계별 실행 흐름
+
+이 코드가 어떻게 동작하는지, 아래 예시로 추적해보자.
+
+```javascript
+go(
+  1,
+  (a) => a + 10,
+  (a) => Promise.resolve(a + 100),
+  (a) => a + 1000,
+  console.log
+)
+```
+
+`go`는 `reduce((a, f) => f(a), [1, func1, func2, func3, console.log])`을 호출한다.
+
+**초기화 단계**
+
+```javascript
+// iter가 없으므로 if 블록 진입
+iter = [1, func1, func2, func3, console.log][Symbol.iterator]()
+acc = iter.next().value // 1
+// 이터레이터 포인터: func1을 가리킴
+```
+
+**while 1번째: `(a) => a + 10`**
+
+```javascript
+const { done, value } = iter.next() // { done: false, value: (a) => a + 10 }
+acc = f(1, (a) => a + 10) // f는 (a, f) => f(a)이므로, (a => a + 10)(1) = 11
+// acc(11)는 Promise가 아님 → while 계속
+```
+
+**while 2번째: `(a) => Promise.resolve(a + 100)`**
+
+```javascript
+const { done, value } = iter.next()
+// { done: false, value: (a) => Promise.resolve(a + 100) }
+acc = f(11, (a) => Promise.resolve(a + 100)) // Promise.resolve(111)
+// acc는 Promise! → return acc.then(acc => recur(f, acc, iter))
+```
+
+여기서 while 루프가 **멈춘다.** Promise가 resolve될 때까지 기다린다.
+
+**Promise가 resolve된 후: `recur(f, 111, iter)` 호출**
+
+`acc.then(acc => recur(f, acc, iter))`에 의해, Promise가 풀리면 `recur(f, 111, iter)`가 호출된다. **같은 이터레이터를 이어서 사용**하므로, 다음 함수부터 계속된다.
+
+**while 3번째: `(a) => a + 1000`**
+
+```javascript
+const { done, value } = iter.next()
+// { done: false, value: (a) => a + 1000 }
+acc = f(111, (a) => a + 1000) // 1111
+// acc(1111)는 Promise가 아님 → while 계속
+```
+
+**while 4번째: `console.log`**
+
+```javascript
+const { done, value } = iter.next()
+// { done: false, value: console.log }
+acc = f(1111, console.log) // console.log(1111) → 1111 출력, acc = undefined
+// while 계속
+```
+
+**while 5번째:**
+
+```javascript
+const { done, value } = iter.next() // { done: true }
+// done이 true → return acc (undefined)
+```
+
+핵심은 이것이다. **동기 구간(`a + 10`, `a + 1000`, `console.log`)은 while 루프 안에서 동기로 처리**되었고, **비동기 구간(`Promise.resolve`)을 만났을 때만 `.then(recur)`로 비동기 재귀**했다.
+
+## 첫 번째 인자가 Promise인 경우
+
+그런데 `go`의 첫 번째 인자 자체가 Promise라면?
+
+```javascript
+go(Promise.resolve(1), (a) => a + 10, console.log)
+// [object Promise]10
+```
+
+`acc`가 처음부터 Promise인데, reduce의 while 루프에서는 첫 번째 함수를 실행하기 전에 `acc`가 Promise인지 확인하지 않는다. 그래서 `Promise + 10`이 되어버린다.
+
+이전 글에서 만들었던 `go1`을 활용하면 된다.
+
+```javascript
+const go1 = (a, f) => (a instanceof Promise ? a.then(f) : f(a))
+```
+
+reduce의 초기화 부분에서 `go1`을 사용한다.
+
+```javascript
+const reduce = function recur(f, acc, iter) {
+  if (!iter) {
+    iter = acc[Symbol.iterator]()
+    acc = iter.next().value
+  }
+  return go1(acc, function recur2(acc) {
+    while (true) {
+      const { done, value } = iter.next()
+      if (done) return acc
+      acc = f(acc, value)
+      if (acc instanceof Promise) {
+        return acc.then(recur2)
+      }
+    }
+  })
+}
+```
+
+`go1(acc, recur2)`가 핵심이다. `acc`가 Promise이면 `.then(recur2)`로 Promise가 풀린 후에 while 루프를 시작하고, 아니면 바로 while 루프를 시작한다.
+
+```javascript
+go(Promise.resolve(1), (a) => a + 10, console.log)
+// 11
+```
+
+이제 첫 번째 인자가 Promise여도 정상 동작한다.
+
+## Promise.reject와 Kleisli Composition
+
+`go`에서 중간에 `Promise.reject`가 나오면 어떻게 될까?
+
+```javascript
+go(
+  1,
+  (a) => a + 10,
+  (a) => Promise.reject('에러 발생!'),
+  (a) => console.log('여기는 실행되면 안 됨'),
+  (a) => a + 1000,
+  console.log
+).catch((e) => console.log(e))
+// 에러 발생!
+```
+
+세 번째 함수에서 `Promise.reject`를 반환하면, reduce의 while 루프에서 `acc`가 rejected Promise가 된다. `acc.then(recur2)`가 실행되지만, rejected Promise의 `.then()`은 **건너뛰어진다.** 결국 이후의 모든 함수가 실행되지 않고, `.catch()`에서 에러를 받는다.
+
+이것이 바로 이전 글에서 다뤘던 **Kleisli Composition**이다. `g(x)`에서 에러가 나면 `f(g(x)) = g(x)`가 성립한다. 중간에 문제가 생기면, 나머지 함수를 건너뛰고 에러를 안전하게 전파한다.
+
+`go`가 Promise를 반환하므로, `.catch()`로 에러를 받을 수 있다는 점도 중요하다.
+
+## Promise.then의 중요한 규칙
+
+Promise에는 한 가지 중요한 규칙이 있다. **중첩된 Promise도 `.then()`으로 한 번에 꺼낼 수 있다.**
+
+```javascript
+Promise.resolve(Promise.resolve(1)).then(console.log)
+// 1
+```
+
+Promise 안에 Promise가 있는데, `.then()`은 안쪽 값 `1`을 바로 꺼내준다. `Promise.resolve`뿐만 아니라 `new Promise`에서도 마찬가지다.
+
+```javascript
+new Promise((resolve) => resolve(new Promise((resolve) => resolve(1)))).then(console.log)
+// 1
+```
+
+중첩이 몇 단계든 상관없다.
+
+```javascript
+Promise.resolve(Promise.resolve(Promise.resolve(1))).then(console.log)
+// 1
+```
+
+이 규칙이 왜 중요한가? 우리가 만든 reduce에서 `.then(recur2)`를 호출할 때, `recur2`가 또 Promise를 반환할 수 있다. 그래도 `.then()`이 자동으로 풀어주기 때문에, 중첩된 Promise를 신경 쓸 필요가 없다.
+
+이것은 **Promise라는 타입이 개발자와 맺은 약속**이다. "내가 알아서 풀어줄 테니, 넌 그냥 `.then()`만 써라." 이 약속 덕분에 비동기 함수 합성이 안전하게 동작한다.
+
+## 정리
+
+이번에 다룬 내용을 요약하면 이렇다.
+
+- **reduce만 고치면 go, pipe 전부 해결** — go는 reduce로, pipe는 go로 구현되어 있다. 제어권은 reduce에 있다.
+- **유명 함수 + 재귀로 동기 구간 성능 유지** — 동기 구간은 while 루프로 빠르게, Promise를 만났을 때만 `.then(recur)`로 비동기 재귀한다.
+- **go1으로 첫 번째 인자 처리** — 첫 번째 인자가 Promise여도 안전하게 동작한다.
+- **Promise.reject → Kleisli Composition** — 중간에 reject가 나오면 이후 함수를 건너뛰고 에러를 안전하게 전파한다.
+- **Promise.then은 중첩된 Promise를 자동으로 풀어준다** — 몇 단계가 중첩되든 `.then()`으로 한 번에 꺼낼 수 있다. 이것이 비동기 함수 합성을 안전하게 만드는 토대다.
