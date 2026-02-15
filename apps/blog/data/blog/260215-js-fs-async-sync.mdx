@@ -1,0 +1,402 @@
+---
+title: '비동기를 값으로 만드는 Promise — 모나드와 Kleisli Composition'
+date: '2026-02-15'
+tags: ['javascript', 'functional-programming', 'promise', 'async', 'kleisli-composition', 'monad']
+draft: false
+summary: 'callback은 결과를 값으로 돌려주지 못한다. Promise는 비동기를 일급 값으로 만들어 합성을 가능하게 한다. 모나드 관점에서 Promise의 안전한 합성을 이해하고, Kleisli Composition으로 외부 상태 변화까지 다뤄보자.'
+images:
+  - '/static/images/subway.png'
+---
+
+![비동기를 값으로 만드는 Promise](/static/images/subway.png)
+
+## 콜백과 Promise
+
+### 콜백 패턴의 한계
+
+비동기 작업을 콜백으로 처리하는 패턴을 먼저 살펴보자.
+
+```javascript
+function add10(a, callback) {
+  setTimeout(() => callback(a + 10), 100)
+}
+```
+
+`add10`은 100ms 후에 `a + 10`을 콜백으로 넘긴다. 사용할 때는 이렇게 된다.
+
+```javascript
+add10(5, (res) => {
+  console.log(res) // 15
+})
+```
+
+여기까지는 괜찮다. 그런데 `add10`을 연속으로 쓰고 싶다면?
+
+```javascript
+add10(5, (res) => {
+  add10(res, (res) => {
+    add10(res, (res) => {
+      console.log(res) // 35
+    })
+  })
+})
+```
+
+콜백 안에 콜백이 중첩된다. 이른바 **콜백 지옥**이다. 하지만 진짜 문제는 들여쓰기가 아니다.
+
+핵심 문제는 **반환값이 없다**는 것이다.
+
+```javascript
+var a = add10(5, (res) => res)
+console.log(a) // undefined
+```
+
+`add10`은 아무것도 반환하지 않는다. 결과는 콜백 안에 갇혀 있고, 바깥에서는 그 결과를 잡을 수 없다. 변수에 담을 수 없으니, 다른 함수에 전달할 수도 없고, 이후에 조합하는 것도 불가능하다.
+
+### Promise 패턴
+
+같은 기능을 Promise로 만들어보자.
+
+```javascript
+function add20(a) {
+  return new Promise((resolve) => setTimeout(() => resolve(a + 20), 100))
+}
+```
+
+`add20`은 **Promise를 반환**한다. 사용할 때는 `.then()`으로 이어붙인다.
+
+```javascript
+add20(5)
+  .then(add20)
+  .then(add20)
+  .then((res) => console.log(res)) // 65
+```
+
+콜백 중첩이 사라졌다. 그런데 이것보다 더 중요한 차이가 있다.
+
+```javascript
+var b = add20(5)
+console.log(b) // Promise {<pending>}
+```
+
+`b`에 **Promise 객체가 담긴다.** 콜백 패턴에서 `a`는 `undefined`였지만, Promise 패턴에서 `b`는 값이다.
+
+### 비동기를 값으로 만드는 Promise
+
+콜백과 Promise의 근본적인 차이는 이것이다.
+
+- **콜백**: 실행만 하고 끝. 반환값이 없다. 이후에 조합할 수 없다.
+- **Promise**: **값으로 존재**한다. 변수에 할당하고, 함수에 전달하고, `.then()`으로 이어붙일 수 있다.
+
+Promise가 일급이라는 것은, 비동기 상황을 **값**으로 다룰 수 있다는 뜻이다. "나중에 결과가 올 거야"라는 상황 자체를 변수에 담아서 들고 다닐 수 있다. 이것이 함수형 프로그래밍에서 Promise가 강력한 이유다.
+
+## Promise의 일급 활용
+
+### 동기와 비동기를 하나로
+
+Promise가 일급이라는 점을 활용하면, 동기와 비동기를 하나의 코드로 처리할 수 있다.
+
+먼저 100ms 뒤에 값을 돌려주는 함수를 만들자.
+
+```javascript
+const delay100 = (a) => new Promise((resolve) => setTimeout(() => resolve(a), 100))
+```
+
+그리고 `go1` 함수를 만든다. 핵심은 `a`가 Promise인지 아닌지에 따라 분기하는 것이다.
+
+```javascript
+const go1 = (a, f) => (a instanceof Promise ? a.then(f) : f(a))
+```
+
+`a`가 Promise면 `.then(f)`로 비동기 처리하고, 아니면 `f(a)`를 바로 실행한다.
+
+### 실행 예시
+
+```javascript
+const add5 = (a) => a + 5
+```
+
+동기 값을 넣으면 동기로 동작한다.
+
+```javascript
+var n1 = 10
+console.log(go1(go1(n1, add5), console.log))
+// 15
+```
+
+비동기 값을 넣으면 비동기로 동작한다.
+
+```javascript
+var n2 = delay100(10)
+console.log(go1(go1(n2, add5), console.log))
+// Promise {<pending>}
+// (100ms 후) 15
+```
+
+같은 `go1` 코드인데, 동기든 비동기든 동작한다. `go1`이 `a`의 타입을 보고 알아서 분기해주기 때문이다. 이것이 "Promise를 일급으로 다룬다"는 것의 실질적인 의미다.
+
+## 합성 관점에서의 Promise와 모나드
+
+### 함수 합성의 안전성 문제
+
+함수 합성 `f(g(x))`를 생각해보자.
+
+```javascript
+const g = (a) => a + 1
+const f = (a) => a * a
+```
+
+정상적인 값이 들어오면 문제없다.
+
+```javascript
+console.log(f(g(1))) // 4
+console.log(f(g(2))) // 9
+```
+
+하지만 잘못된 값이 들어오면?
+
+```javascript
+console.log(f(g())) // NaN
+```
+
+`g()`에 인자가 없으면 `undefined + 1`이 되어 `NaN`이 나오고, `f`는 `NaN * NaN`을 계산한다. 수학에서 `f . g`는 항상 안전하지만, 프로그래밍에서는 그렇지 않다.
+
+### 모나드란 — 안전한 합성을 위한 패턴
+
+모나드는 **값을 컨텍스트로 감싸고, 그 안에서 함수를 안전하게 합성하는 패턴**이다.
+
+두 가지 핵심 연산이 있다.
+
+- **unit** — 값을 컨텍스트에 넣는다. (`Array.of`, `Promise.resolve`)
+- **bind** — 컨텍스트 안의 값에 함수를 적용한다. (`.flatMap`, `.then`)
+
+핵심은 이것이다: **문제가 생기면 체인을 안전하게 끊는다.**
+
+### 배열 — 값이 있거나 없는 컨텍스트
+
+배열을 모나드처럼 사용해보자.
+
+```javascript
+Array.of(1).map(g).map(f) // [4]
+```
+
+정상적으로 동작한다. 그런데 값이 없다면?
+
+```javascript
+;[].map(g).map(f) // []
+```
+
+빈 배열이다. 에러가 나지 않는다. `g`도 `f`도 실행되지 않고, 그냥 빈 배열이 안전하게 전달된다. 배열이라는 컨텍스트가 "값이 없는 상황"을 안전하게 처리해준 것이다.
+
+### Promise — 미래에 올 값의 컨텍스트
+
+Promise도 같은 패턴으로 동작한다.
+
+```javascript
+Promise.resolve(2)
+  .then(g)
+  .then(f)
+  .then((r) => console.log(r)) // 9
+```
+
+비동기 상황에서도 동일하다.
+
+```javascript
+new Promise((resolve) => setTimeout(() => resolve(2), 100))
+  .then(g)
+  .then(f)
+  .then((r) => console.log(r)) // (100ms 후) 9
+```
+
+`.then()`은 사실상 `flatMap`이다. Promise를 반환해도 중첩되지 않고 자동으로 풀린다. 그리고 `Promise.reject`가 되면 이후 `.then`을 전부 건너뛰고 `.catch`로 직행한다.
+
+```javascript
+Promise.reject('에러!')
+  .then(g)
+  .then(f)
+  .catch((e) => console.log(e)) // "에러!"
+```
+
+`g`도 `f`도 실행되지 않았다. 에러 상황을 안전하게 처리한 것이다.
+
+### 비교 정리
+
+|             | unit                 | bind          | 안전하게 다루는 것         |
+| ----------- | -------------------- | ------------- | -------------------------- |
+| **Array**   | `Array.of(x)`        | `.flatMap(f)` | 값이 없거나 여러 개인 상황 |
+| **Promise** | `Promise.resolve(x)` | `.then(f)`    | 비동기 + 에러 상황         |
+
+배열이 "값이 있을 수도 있는 상자"라면, Promise는 "미래에 올 값의 상자"다.
+
+둘 다 같은 모나드 패턴이다 — 컨텍스트 안에서 함수를 합성하되, 문제가 생기면 체인을 안전하게 끊는다.
+
+## Kleisli Composition 관점에서의 Promise
+
+### 현실의 함수 합성은 위험하다
+
+수학에서 함수 합성은 항상 같은 결과를 보장한다.
+
+```
+f(g(x)) = f(g(x))
+```
+
+하지만 현실의 프로그래밍에서는 **외부 상태**가 끼어든다.
+
+```javascript
+var users = [
+  { id: 1, name: 'aa' },
+  { id: 2, name: 'bb' },
+  { id: 3, name: 'cc' },
+]
+
+const getUserById = (id) => find((u) => u.id === id, users)
+
+const f = ({ name }) => name
+const g = getUserById
+```
+
+정상적인 상황에서는 잘 동작한다.
+
+```javascript
+const r = f(g(2))
+console.log(r) // "bb"
+```
+
+하지만 외부 상태가 바뀌면?
+
+```javascript
+users.pop()
+
+const r2 = f(g(3))
+// TypeError: Cannot destructure property 'name' of undefined
+```
+
+`users`에서 `id: 3`인 유저가 사라졌다. `g(3)`이 `undefined`를 반환하고, `f`는 `undefined`를 분해하려다 에러가 난다. **같은 코드인데 결과가 달라진다.**
+
+### Kleisli Composition이란
+
+Kleisli Composition은 이 문제를 해결하는 규칙이다.
+
+핵심 아이디어는 간단하다.
+
+```
+f(g(x)) = g(x)   (g에서 에러가 나면, f를 실행하지 않고 g의 에러를 그대로 전달한다)
+```
+
+`g`에서 문제가 생기면, `f`를 실행하지 않고 `g`의 결과(에러)를 그대로 전달한다. 합성을 안전하게 끊는 것이다.
+
+### 이론적 배경: Kleisli 화살표
+
+Kleisli Composition이라는 이름은 카테고리 이론에서 왔다. 어렵게 들리지만, JavaScript로 보면 생각보다 간단하다.
+
+**Kleisli 화살표(Kleisli Arrow)** 란 무엇인가?
+
+일반 함수는 입력 `a`를 받아서 출력 `b`를 반환한다.
+
+```
+a → b
+```
+
+Kleisli 화살표는 입력 `a`를 받아서, **모나드로 감싼 `b`** 를 반환하는 함수다.
+
+```
+a → M(b)
+```
+
+여기서 `M`은 모나드다. JavaScript에서 대표적인 모나드가 바로 **Promise**다. 그러니까 이런 함수가 Kleisli 화살표다.
+
+```javascript
+// 일반 함수: a → b
+const add1 = (a) => a + 1
+
+// Kleisli 화살표: a → M(b)  (M = Promise)
+const add1K = (a) => Promise.resolve(a + 1)
+```
+
+"결과를 컨텍스트(모나드)에 넣어서 반환하는 함수" — 이것이 Kleisli 화살표의 전부다.
+
+**일반 합성 vs Kleisli 합성**
+
+일반 합성 `f ∘ g`는 단순하다. `g`의 출력을 `f`의 입력으로 넣으면 된다.
+
+```javascript
+// 일반 합성
+const compose = (f, g) => (x) => f(g(x))
+```
+
+하지만 `g`가 Kleisli 화살표라면? `g(x)`의 결과는 `M(b)`, 즉 Promise다. 이걸 `f`에 바로 넣을 수 없다. **모나드의 bind(`.then`)를 거쳐서 M을 벗기고 f에 전달해야** 한다.
+
+```javascript
+// Kleisli 합성
+const composeK = (f, g) => (x) => g(x).then(f)
+```
+
+이것이 Kleisli 합성이다. 수학에서는 `f >=> g`라고 쓰고, JavaScript에서는 `.then()`이 그 역할을 한다.
+
+정리하면:
+
+- **Kleisli 화살표**는 "부수효과가 있는 함수"를 모나드로 표현한 것이다
+- **Kleisli 합성**은 모나드의 bind(`.then`)를 이용해 이런 함수들을 안전하게 이어붙이는 것이다
+- Promise에서 `.then()`은 자연스럽게 Kleisli 합성을 수행한다
+
+### Promise로 Kleisli Composition 구현
+
+Promise를 사용하면 Kleisli Composition을 자연스럽게 구현할 수 있다.
+
+```javascript
+var users = [
+  { id: 1, name: 'aa' },
+  { id: 2, name: 'bb' },
+  { id: 3, name: 'cc' },
+]
+
+const getUserById = (id) => find((u) => u.id === id, users) || Promise.reject('없어요!')
+
+const f = ({ name }) => name
+const g = getUserById
+```
+
+`getUserById`가 유저를 찾지 못하면 `Promise.reject`를 반환한다. 이제 Promise 체인으로 합성해보자.
+
+```javascript
+const r = Promise.resolve(2)
+  .then(g)
+  .then(f)
+  .catch((a) => a)
+
+r.then(console.log) // "bb"
+```
+
+정상 동작한다. 이제 외부 상태를 바꿔보자.
+
+```javascript
+users.pop()
+
+const r2 = Promise.resolve(3)
+  .then(g)
+  .then(f)
+  .catch((a) => a)
+
+r2.then(console.log) // "없어요!"
+```
+
+`g`가 `Promise.reject('없어요!')`를 반환했고, `.then(f)`는 건너뛰고 `.catch`로 직행했다. `f`는 실행되지 않았다. 에러가 안전하게 전달된 것이다.
+
+이것이 Kleisli Composition이다. `g(x)`에서 에러가 나면 `f(g(x)) = g(x)`가 성립한다.
+
+### 왜 이것이 중요한가
+
+- **외부 상태 변화에 안전하다.** DB가 바뀌든, 네트워크가 끊기든, 함수 합성이 터지지 않는다.
+- **에러 전파가 자동으로 처리된다.** 중간에 어디서 실패하든 `.catch`로 모인다.
+- **함수형 프로그래밍에서 부수효과를 다루는 핵심 패턴**이다. 순수하지 않은 현실의 코드를 안전하게 합성할 수 있게 해준다.
+
+## 정리
+
+이번에 다룬 내용을 요약하면 이렇다.
+
+- **Promise는 일급** — 비동기 상황을 값으로 다룬다. 콜백과의 근본적인 차이다.
+- **go1** — `instanceof Promise` 분기로 동기/비동기를 하나의 코드로 처리한다.
+- **합성** — Promise는 비동기 컨텍스트에서 안전한 함수 합성을 가능하게 하는 모나드다.
+- **Kleisli Composition** — 외부 상태 변화에도 안전한 함수 합성 규칙. `g`에서 에러가 나면 `f`를 건너뛰고 에러를 그대로 전달한다.
+
+Promise는 단순한 비동기 도구가 아니다. 함수형 프로그래밍의 관점에서 보면, Promise는 **비동기와 에러라는 컨텍스트 안에서 함수를 안전하게 합성하기 위한 도구**다.
