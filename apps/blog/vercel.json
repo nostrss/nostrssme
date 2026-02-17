@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/playground",
+      "destination": "https://js-playground-beta.vercel.app/"
+    },
+    {
+      "source": "/playground/:path*",
+      "destination": "https://js-playground-beta.vercel.app/:path*"
+    }
+  ]
+}
