@@ -6,7 +6,7 @@ const siteMetadata = {
   description: `Nostrss's Blog and Personal Site`,
   language: 'ko-kr',
   theme: 'system', // system, dark or light
-  siteUrl: 'https://blog.nostrss.me',
+  siteUrl: 'https://nostrss.me',
   siteRepo: 'https://github.com/nostrss/nostrssme',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
