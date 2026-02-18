@@ -1,0 +1,261 @@
+---
+title: 'JavaScript Playground 만들기'
+date: '2026-02-18T10:00:00'
+tags: ['javascript', 'iframe', 'sandbox', 'browser', 'web']
+draft: false
+summary: '바이브 코딩으로 JavaScript Playground를 만들면서 배운 것들을 정리했다. iframe sandbox를 활용해서 웹페이지에서 javascript를 실행해보자. '
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![javascript playground](/static/images/coffee_machine_2.png)
+
+연휴 기간에 바이브 코딩으로 간단한 웹사이트를 만들었다. javascript 코드를 웹에서 바로 실행하는 javascript playground라고 생각하면 될 것 같다.
+
+[Javascript 플레이그라운드 바로가기](https://www.nostrss.me/playground)
+
+최근에 강의를 들으면서 javascript 코드를 실행하는데 생각보다 불편함이 있었다. 매번 저장하고 결과를 확인하기 위해서는 node를 실행해줘야 했다. 브라우저 콘솔창은 입력하는게 IDE처럼 편리하지 않아서 불편했었다.
+
+그래서 한번 내가 직접 사용할 용도로 만들어 보았는데, 만들면서 알게된 몇가지를 기록하려고 한다.
+
+## 브라우저에서 사용자 코드를 안전하게 실행하는 법
+
+### eval
+
+브라우저에서 사용자가 입력한 JavaScript를 실행하는 가장 단순한 방법은 `eval()` 이다.
+
+```js
+eval(userCode) // 절대 하지 마세요
+```
+
+> eval은 mdn에서도 매우 위험하니 사용하지 말라고 경고하는 함수 중에 하나이다.
+
+> 먼가 사용하면 큰일이 날 것 같다...
+
+### new Function
+
+또는 `new Function` 을 쓰는 방법도 있다.
+
+```js
+new Function(userCode)() // 이것도 마찬가지
+```
+
+이 방법들의 문제는 **실행 컨텍스트가 부모 페이지와 동일**하다는 점이다. 사용자 코드가 다음에 모두 접근할 수 있다.
+
+- `window`, `document` — DOM 전체를 읽고 쓸 수 있다
+- `localStorage`, `sessionStorage`, `cookie` — 민감한 데이터 탈취 가능
+- 기존 이벤트 리스너 조작, 외부 요청 발송
+
+그래서 CodePen, JSFiddle, StackBlitz 같은 서비스가 왜 실행 환경을 별도 서브도메인(`cdpn.io`, `jsfiddle.net/embed`)에서 실행한다고 한다. 즉, 부모페이지와 실행되는 환경을 **격리**해야 하는 것이다..
+
+그래서 내가 선택한 방식은 `sandbox` 속성을 가진 `iframe` + `postMessage` 조합이다.
+
+## iframe sandbox
+
+[MDN iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/API/HTMLIFrameElement/sandbox)
+
+### `allow-scripts`를 부여하면 일어나는 일
+
+```html
+<iframe sandbox="allow-scripts" srcdoc="..."></iframe>
+```
+
+`sandbox` 속성에 `allow-same-origin`을 **명시하지 않으면**, 브라우저는 해당 iframe을 **null origin**으로 취급한다. 결과적으로:
+
+| 차단되는 것            | 이유                                |
+| ---------------------- | ----------------------------------- |
+| `parent.document` 접근 | Same-origin policy 위반             |
+| `parent.localStorage`  | null origin은 storage API 사용 불가 |
+| 팝업 열기              | `allow-popups` 없음                 |
+| 폼 제출                | `allow-forms` 없음                  |
+| 최상위 프레임 이동     | `allow-top-navigation` 없음         |
+
+`allow-scripts`만 있으면 iframe 내부에서 스크립트는 실행되지만, 부모 페이지나 브라우저 저장소에는 일절 접근할 수 없다. 사용자 코드가 아무리 악의적이어도 피해 반경이 iframe 내부로 한정된다.
+
+### srcdoc를 쓰는 이유
+
+- `src` 속성으로 별도 URL을 로드하면 네트워크 요청이 발생하고, CSP 설정이나 CORS 문제가 끼어들 수 있다.
+- `srcdoc`에 HTML을 직접 문자열로 넣으면 **네트워크 없이 인라인 로드**가 가능하다. 초기 로드도 빠르고 외부 의존성이 없다.
+
+실제 코드(`src/lib/runner.ts:107-127`):
+
+```ts
+const createFrame = () => {
+  const nextFrame = document.createElement('iframe')
+  nextFrame.setAttribute('sandbox', 'allow-scripts')
+  nextFrame.setAttribute('aria-hidden', 'true')
+  nextFrame.tabIndex = -1
+  nextFrame.style.display = 'none'
+
+  readyPromise = new Promise<void>((resolve, reject) => {
+    nextFrame.onload = () => resolve()
+    nextFrame.onerror = () => reject(new Error('Runner iframe failed to load'))
+  })
+
+  nextFrame.srcdoc = runnerSrcDoc
+  document.body.appendChild(nextFrame)
+  frame = nextFrame
+}
+```
+
+## console 인터셉트 — new Function 패턴
+
+iframe 안에서 사용자 코드를 실행할 때, `console.log()`의 출력을 어떻게 부모에게 전달할까?
+
+### 가짜 console 객체 주입
+
+트릭은 `new Function('console', code)` 패턴이다. `console`을 **매개변수 이름**으로 선언해서, 우리가 만든 가짜 객체를 함수 스코프에 주입한다.
+
+```js
+// iframe 내부 srcdoc 스크립트 (src/lib/runner.ts:69-89)
+const executionConsole = Object.fromEntries(
+  levels.map((level) => [
+    level,
+    (...args) => {
+      postMessage({
+        type: 'console-event',
+        runId,
+        level,
+        args: args.map(serializeArg),
+        timestamp: Date.now(),
+      })
+    },
+  ])
+)
+
+try {
+  const executable = new Function('console', command.code)
+  executable(executionConsole)
+} catch (error) {
+  postRuntimeError(error)
+}
+```
+
+사용자가 `console.log('hello')` 를 쓰면, 실제 브라우저의 `console`이 아닌 `executionConsole.log` 가 호출된다. 이 함수는 `postMessage`로 부모에게 메시지를 보내는 역할만 한다.
+
+## serializeArg — 직렬화 문제 해결
+
+`postMessage`는 [구조적 클론 알고리즘](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm)으로 데이터를 복사하지만, 함수나 일부 객체는 복사되지 않는다. `serializeArg()`로 미리 문자열로 변환해서 이 문제를 피하도록 했다.
+
+```js
+// src/lib/runner.ts:14-28
+const serializeArg = (value) => {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null)
+    return String(value)
+  if (typeof value === 'undefined') return 'undefined'
+  if (typeof value === 'function') return '[Function ' + (value.name || 'anonymous') + ']'
+  if (value instanceof Error) return value.stack || value.message
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    // 순환 참조 등 JSON 직렬화 불가 케이스
+    return Object.prototype.toString.call(value)
+  }
+}
+```
+
+## runId 시스템
+
+사용자가 코드를 빠르게 연속 수정하면 여러 실행이 겹칠 수 있다. `runId`는 실행마다 1씩 증가하는 정수로, **현재 실행 ID와 다른 메시지는 무시**한다.
+
+그리고 밑에서 추가로 설명하겠지만, 비동기 실행 결과도 `runId`를 통해 구분한다.
+
+```ts
+// src/hooks/useCodeRunner.ts:22-25
+const handleRunnerMessage = useCallback((message: RunnerMessage) => {
+  if (message.runId !== activeRunIdRef.current) {
+    return // 이전 실행의 지연된 메시지는 버린다
+  }
+  // ...
+}, [])
+```
+
+## 출처 검증
+
+`postMessage`는 어떤 창에서도 보낼 수 있으므로, 수신 측에서 출처를 반드시 검증해야 한다.
+
+```ts
+// src/lib/runner.ts:129-132
+const handleMessage = (event: MessageEvent<unknown>) => {
+  if (!frame || event.source !== frame.contentWindow) {
+    return // 우리 iframe이 아닌 출처는 무시
+  }
+
+  const parsed = validate(runnerMessageSchema, event.data)
+  // ...
+}
+```
+
+`event.source !== frame.contentWindow` 체크로 우리가 만든 iframe에서 온 메시지만 처리한다. 추가로 Zod 스키마(`runnerMessageSchema`)로 **메시지 구조를 런타임에 검증**한다. 신뢰할 수 없는 출처에서 온 데이터이므로 TypeScript 타입만으로는 충분하지 않다.
+
+## iframe 재생성
+
+`execute()` 가 호출될 때마다 기존 iframe을 버리고 새로 만든다.
+
+```ts
+// src/lib/runner.ts:150-151
+const execute = async (code: string, runId: number) => {
+  destroyFrame() // 기존 iframe 제거
+  createFrame() // 새 iframe 생성
+  // ...
+}
+```
+
+iframe을 재사용하지 않는 이유:
+
+- **전역 상태 오염**: `window.myVar = 1` 같은 코드를 실행하면 다음 실행에도 그 변수가 남는다. 재실행할 때마다 새로운 격리된 환경에서 시작해야 한다.
+- **타이머/이벤트 리스너 잔존**: `setInterval`이나 `addEventListener`로 등록한 것들이 이전 실행에 남아서 예기치 않은 동작을 유발한다.
+- **메모리 누수**: iframe을 재사용하면 이전 실행에서 참조한 클로저나 DOM이 메모리에 계속 남을 수 있다.
+
+iframe을 매번 새로 만드는 비용보다 깨끗한 실행 환경을 보장하는 이점이 훨씬 크다.
+
+## 비동기 에러 처리
+
+### 동기 에러
+
+`new Function` 실행을 `try/catch`로 감싸서 처리한다.
+
+```js
+try {
+  const executable = new Function('console', command.code)
+  executable(executionConsole)
+} catch (error) {
+  postRuntimeError(error)
+}
+```
+
+### 비동기 에러
+
+`async/await`나 `Promise`를 사용하는 코드에서 발생한 에러는 `try/catch`에 잡히지 않는다. `unhandledrejection` 이벤트로 따로 처리한다.
+
+```js
+// src/lib/runner.ts:50-53 (srcdoc 내부)
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason : new Error(String(event.reason))
+  postRuntimeError(reason)
+})
+```
+
+### activeRunId 가드
+
+비동기 에러는 다음 실행이 이미 시작된 후에 도착할 수 있다. `activeRunId` 가 `null` 이 아닐 때만 에러를 전송한다.
+
+```js
+// src/lib/runner.ts:34-36
+const postRuntimeError = (error) => {
+  if (activeRunId === null) return
+  // ...
+}
+```
+
+## 향후 개선 및 도전해 볼 것들
+
+`sandbox="allow-scripts"` iframe은 강력하지만 완벽하지 않다.
+
+- **CPU/메모리 독점**: 무한 루프나 메모리를 대량 소비하는 코드를 막을 수 없다
+- **네트워크 접근**: `allow-scripts`만으로는 `fetch`를 막지 못한다 (`allow-same-origin` 없이도 외부 API 호출 가능)
+- **타이밍 공격**: iframe 내에서 `performance.now()` 등 정밀 타이머 접근이 가능하다
+
+더 엄격한 격리가 필요하다면 **Web Worker** (UI 스레드와 분리된 실행) 또는 **WebAssembly 샌드박스** 방식을 고려할 수 있다. 다만 구현 복잡도가 크게 올라간다고 한다.
