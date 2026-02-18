@@ -46,7 +46,7 @@ new Function(userCode)() // 이것도 마찬가지
 - `localStorage`, `sessionStorage`, `cookie` — 민감한 데이터 탈취 가능
 - 기존 이벤트 리스너 조작, 외부 요청 발송
 
-그래서 CodePen, JSFiddle, StackBlitz 같은 서비스가 왜 실행 환경을 별도 서브도메인(`cdpn.io`, `jsfiddle.net/embed`)에서 실행한다고 한다. 즉, 부모페이지와 실행되는 환경을 **격리**해야 하는 것이다..
+그래서 CodePen, JSFiddle, StackBlitz 같은 서비스도 실행 환경을 별도 서브도메인(`cdpn.io`, `jsfiddle.net/embed`)에서 실행한다고 한다. 즉, 부모페이지와 실행되는 환경을 **격리**해야 하는 것이다..
 
 그래서 내가 선택한 방식은 `sandbox` 속성을 가진 `iframe` + `postMessage` 조합이다.
 
