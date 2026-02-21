@@ -11,9 +11,9 @@ const ContentSecurityPolicy = `
   style-src 'self' 'unsafe-inline';
   img-src * blob: data:;
   media-src *.s3.amazonaws.com;
-  connect-src *;
+  connect-src * https://pagead2.googlesyndication.com;
   font-src 'self';
-  frame-src giscus.app
+  frame-src giscus.app https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com;
 `
 
 const securityHeaders = [
