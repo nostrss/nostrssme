@@ -1,0 +1,229 @@
+---
+title: 'URL 해시로 코드를 공유하는 법'
+date: '2026-02-24T10:00:00'
+tags: ['javascript', 'lz-string', 'url', 'base64', 'encoding', 'playground']
+draft: false
+summary: 'JavaScript Playground에 코드 공유 기능을 추가했다. LZ-String 압축과 URL 해시를 조합해서 서버 없이 코드를 공유하는 방법을 정리했다.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![javascript playground](/static/images/coffee_machine_2.png)
+
+[Javascript 플레이그라운드 바로가기](https://www.nostrss.me/playground)
+
+## 공유 방법 선택 — URL 해시를 고른 이유
+
+| 방식                    | 설명                                                |
+| ----------------------- | --------------------------------------------------- |
+| 서버에 저장 후 단축 URL | 백엔드가 필요하고 영구 보관 비용이 생긴다           |
+| URL 해시 (`#code=...`)  | 브라우저에서만 처리되고, **서버에 전송되지 않는다** |
+
+이 플레이그라운드는 서버 없이 동작하는 순수 클라이언트 앱이다. **URL 해시** 방식이 가장 자연스러운 선택이었다.
+
+## 핵심 기술: LZ-String
+
+URL에 코드를 그대로 넣으면 금세 수천 자가 된다. 일부 브라우저는 URL 길이를 약 2,000~8,000자로 제한하기 때문에 **압축**이 필수다.
+
+[lz-string](https://github.com/pieroxy/lz-string)은 Lempel-Ziv 알고리즘 기반의 경량 압축 라이브러리다. 특히 `compressToBase64()` / `decompressFromBase64()` API는 URL 안에서 안전하게 사용할 수 있는 Base64 문자열로 변환해준다.
+
+```bash
+pnpm add lz-string
+```
+
+## 구현
+
+### 1. 인코딩 / 디코딩 유틸
+
+```typescript
+// src/utils/share.ts
+import LZString from 'lz-string'
+
+export function encodeCode(code: string): string {
+  return LZString.compressToBase64(code)
+}
+
+export function decodeCode(encoded: string): string | null {
+  return LZString.decompressFromBase64(encoded)
+}
+```
+
+`decompressFromBase64()`는 잘못된 입력에 `null`을 반환한다. 이후 코드에서 반드시 null 체크가 필요하다.
+
+### 2. URL 생성 및 파싱
+
+```typescript
+// src/utils/share.ts
+export function buildShareUrl(code: string): string {
+  const url = new URL(window.location.href)
+  url.hash = `code=${encodeCode(code)}`
+  return url.toString()
+}
+
+export function getSharedCode(): string | null {
+  const hash = window.location.hash
+  if (!hash.startsWith('#code=')) return null
+  const encoded = hash.slice('#code='.length)
+  if (!encoded) return null
+  return decodeCode(encoded)
+}
+```
+
+**`buildShareUrl`**: 현재 URL에 `#code=<인코딩된_코드>` 해시를 붙여 공유 URL을 만든다.
+
+**`getSharedCode`**: `window.location.hash`에서 코드를 꺼내 복원한다. 두 가지 방어 로직이 있다.
+
+- `#code=` prefix가 없으면 `null` 반환 → 다른 용도의 해시와 충돌 방지
+- 인코딩된 값이 비어있으면 `null` 반환 → `#code=`만 있는 잘못된 URL 처리
+
+### 3. React 훅으로 UI 연결
+
+```typescript
+// src/hooks/useShareCode.ts
+import { useCallback } from 'react'
+import { buildShareUrl } from '@/utils/share'
+
+export function useShareCode(code: string) {
+  const share = useCallback(async () => {
+    const url = buildShareUrl(code)
+    await navigator.clipboard.writeText(url)
+    alert('링크가 클립보드에 복사되었습니다!')
+  }, [code])
+
+  return { share }
+}
+```
+
+`code`가 바뀔 때마다 `share` 함수가 새로 만들어지는 것을 막기 위해 `useCallback`으로 메모이제이션했다.
+
+### 4. Editor 초기화 우선순위
+
+```typescript
+// src/components/Editor.tsx
+const initialCode = getSharedCode() ?? loadCode(CODE_STORAGE_KEY) ?? runtimeConfig.initialCode
+```
+
+세 단계의 fallback 체인이다.
+
+| 우선순위 | 소스         | 설명                         |
+| -------- | ------------ | ---------------------------- |
+| 1        | URL 해시     | 공유 링크로 접속한 경우      |
+| 2        | localStorage | 이전 작업을 이어서 하는 경우 |
+| 3        | 기본값       | 처음 방문하는 경우           |
+
+## 전체 데이터 흐름
+
+### 공유하기
+
+```
+코드 작성
+  ↓
+Share 버튼 클릭 → useShareCode.share()
+  ↓
+buildShareUrl(code)
+  ↓
+encodeCode(code) = LZString.compressToBase64(code)
+  ↓
+https://example.com/playground#code=K7xQrS9...
+  ↓
+navigator.clipboard.writeText(url) → 클립보드 복사
+```
+
+### 공유 URL로 접속
+
+```
+URL 접속: https://example.com/playground#code=K7xQrS9...
+  ↓
+Editor 초기화 → getSharedCode()
+  ↓
+window.location.hash = "#code=K7xQrS9..."
+  ↓
+decodeCode("K7xQrS9...") = LZString.decompressFromBase64(...)
+  ↓
+원본 코드 복원 → Editor에 표시
+```
+
+## 테스트 전략
+
+공유 기능은 세 레이어에서 검증한다.
+
+### 단위 테스트 — 인코딩 라운드트립
+
+핵심은 "인코딩 후 디코딩하면 원본이 나와야 한다"는 라운드트립 테스트다.
+
+```typescript
+// tests/unit/share.test.ts
+describe('encodeCode / decodeCode', () => {
+  it('인코딩 후 디코딩하면 원본 코드를 반환한다', () => {
+    const code = 'console.log("hello, world!")'
+    expect(decodeCode(encodeCode(code))).toBe(code)
+  })
+
+  it('빈 문자열을 디코딩하면 null을 반환한다', () => {
+    expect(decodeCode('')).toBeNull()
+  })
+
+  it('멀티라인 코드도 라운드트립이 성공한다', () => {
+    const code = 'const a = 1\nconst b = 2\nconsole.log(a + b)'
+    expect(decodeCode(encodeCode(code))).toBe(code)
+  })
+})
+```
+
+`getSharedCode` 테스트에서는 `window.location.hash`를 직접 조작하고 `afterEach`로 초기화한다.
+
+```typescript
+// tests/unit/share.test.ts
+describe('getSharedCode', () => {
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  it('#code= prefix가 없으면 null을 반환한다', () => {
+    window.location.hash = 'other=something'
+    expect(getSharedCode()).toBeNull()
+  })
+
+  it('#code= 이후 값이 비어있으면 null을 반환한다', () => {
+    window.location.hash = 'code='
+    expect(getSharedCode()).toBeNull()
+  })
+})
+```
+
+### E2E 테스트 — Clipboard API 모킹
+
+Playwright에서 Clipboard API는 기본적으로 사용 불가능하다. `addInitScript`로 모킹한다.
+
+```typescript
+// tests/e2e/share.spec.ts
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: () => Promise.resolve(),
+      },
+    })
+  })
+})
+
+test('Share 버튼 클릭 시 복사 완료 alert가 노출된다', async ({ page }) => {
+  page.on('dialog', async (dialog) => {
+    expect(dialog.message()).toBe('링크가 클립보드에 복사되었습니다!')
+    await dialog.accept()
+  })
+
+  await page.getByRole('button', { name: 'Share' }).click()
+})
+```
+
+## 주의사항 및 트레이드오프
+
+| 항목              | 내용                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| **URL 길이 한계** | 브라우저마다 다르지만 약 2,000~8,000자 제한. 매우 긴 코드는 공유가 어려울 수 있다               |
+| **보안 없음**     | URL을 아는 사람은 누구나 코드를 볼 수 있다. 비밀 키 등 민감 정보를 코드에 포함하지 말 것        |
+| **SEO 비적합**    | 검색 엔진 크롤러는 해시를 처리하지 않는다. 코드 내용이 인덱싱되지 않는다 (이 프로젝트에선 무관) |
+| **null 안전성**   | `decompressFromBase64()`는 실패 시 `null` 반환. 반드시 null 체크 필요                           |
+
+[JS Playground 바로가기](https://www.nostrss.me/playground)
