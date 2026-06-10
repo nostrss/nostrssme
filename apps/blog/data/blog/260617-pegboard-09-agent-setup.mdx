@@ -1,0 +1,291 @@
+---
+title: '오케스트라 + 파트 하니스 — Pegboard 의 에이전트 설정 전부'
+date: '2026-06-17T10:00:00'
+tags: ['pegboard', 'dev-log', 'claude-code', 'agents', 'skills', 'orchestration']
+draft: true
+summary: '~100페이지 사이트를 굴리는 에이전트 설정을 정리한다. 메인 + 스킬 + 좁은 서브에이전트의 3계층, 슬래시 명령어 없이 작동하는 자동 라우팅, "기본은 스킬, 서브에이전트는 격리·병렬·시스템맵이 필요할 때만" 의 ADR-0002 원칙, 그리고 문서들이 각자 무엇을 책임지는지.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![pegboard agent setup](/static/images/coffee_machine_2.png)
+
+[1편](/blog/260609-pegboard-01-start)부터 8편까지 *무엇을 만들었나*를 얘기했다. 이번 편은 *그걸 어떻게 굴렸나* — 에이전트 설정 자체에 대한 글이다.
+
+페그보드는 Claude Code 환경에서 작업한다. 그 위에 깐 설정들이 ~100페이지 양산이라는 목표와 어떻게 맞물려 있는지 정리한다.
+
+## 시작점 — 7개 서브에이전트를 만들고 싶었다
+
+처음 떠올린 그림은 *역할 하나에 서브에이전트 하나*였다.
+
+```
+마케팅/SEO 서브에이전트
+디자인 서브에이전트
+다국어 서브에이전트
+개발 서브에이전트
+전략 서브에이전트
+기획 서브에이전트
+탐색(Explorer) 서브에이전트
+```
+
+7개 서브에이전트가 *유기적으로 작동*해서 작업을 처리하는 그림. 멋있어 보였다.
+
+그런데 `docs/adr/0002-skill-vs-subagent.md` 에서 멈췄다. 핵심 질문이 하나 있었다.
+
+> 이 역할들 중 *몇 개가 진짜로 격리된 컨텍스트가 필요한가?*
+
+답: **거의 없다.** 대부분은 *메인이 방금 한 일에 규칙을 입히는* 성격이다. 그러니까 컨텍스트를 공유하는 게 더 이득이다.
+
+## ADR-0002의 분리 기준
+
+이걸 명확히 박았다.
+
+> - **스킬 = 인라인 규칙 적용.** 메인 에이전트가 방금 한 일에 규칙을 입힐 때. 컨텍스트 공유, 콜드 스타트 없음, 비용 낮음.
+> - **서브에이전트 = 격리·병렬·시스템 지도.** 메인 컨텍스트를 더럽히지 않고 처리해야 하거나, 진짜 병렬화가 필요하거나, 자체 컨텍스트에 큰 시스템 지도를 들고 있어야 답하는 질문에 사용.
+
+이 기준으로 7개 역할을 다시 평가했다.
+
+| 역할        | 스킬 / 서브에이전트 / 다른 것     | 이유                                            |
+| ----------- | --------------------------------- | ----------------------------------------------- |
+| 개발 (TDD)  | 스킬 (`tdd`)                      | 메인이 짠 코드에 TDD 규칙 입힘                  |
+| 디자인 UI   | 스킬 (`make-interfaces-feel-better`) | 메인이 만든 컴포넌트에 폴리시 입힘              |
+| 디자인 검사 | 스킬 (`web-design-guidelines`)    | 메인이 만든 코드를 a11y/시맨틱 검사             |
+| SEO         | 스킬 (`seo-audit`)                | 메인이 만든 페이지의 SEO 표면 감사              |
+| 다국어 어감 | 스킬 (`i18n-localization`)        | 메인이 짠 번역의 어감 검토                      |
+| 다국어 금기 | **테스트 게이트** (`profanity.ts`) | 결정론적 문제는 결정론적 도구로 ([4편 참조](/blog/260612-pegboard-04-i18n)) |
+| 전략        | 스킬 (`strategy`)                 | 스냅샷 파일 위에서 추론 ([8편](/blog/260616-pegboard-08-strategy-data-loop)) |
+| 코드 탐색   | 서브에이전트 (`Explorer`)         | 검색 노이즈를 메인 컨텍스트에서 격리            |
+| 시스템 지도 | 서브에이전트 (`pegboard-curator`) | 큰 시스템 지도를 자기 컨텍스트에 보유           |
+| 기획        | (없음 — 메인이 흡수)              | 자동 라우팅이 이걸 대신함                       |
+
+7개 서브에이전트 → 결국 **2개 서브에이전트 + 8개 스킬 + 1개 테스트 게이트**가 됐다. 그리고 *기획 파트는 만들지 않았다* — 메인 에이전트의 자동 라우팅이 그걸 대신한다.
+
+## 3계층 구조 — Main / Skill / Subagent
+
+`docs/agent-architecture.md` 의 A 섹션에 박아둔 한 줄 요약.
+
+> **메인(책임자) + 스킬(인라인 규칙 적용) + 좁은 서브에이전트(격리·병렬·시스템 지도). 단, 서브에이전트는 데이터 소스 완성 후 도입.**
+
+```
+┌────────────────────────────────────────────────┐
+│         Main Agent (Claude Code 메인 세션)     │
+│                                                │
+│  - 책임자: 모든 최종 결정                       │
+│  - 자동 라우팅: 지시 받자마자 디스패치 매트릭스 적용  │
+│  - 쓰기 권한 보유                              │
+└─┬──────────────────────────────────────────────┘
+  │
+  │ 인라인 로드
+  ▼
+┌─────────────────────────────────┐
+│ 스킬 (메인 컨텍스트 공유)         │
+│                                 │
+│  tdd, refactor,                 │
+│  improve-codebase-architecture, │
+│  make-interfaces-feel-better,   │
+│  web-design-guidelines,         │
+│  frontend-design, seo-audit,    │
+│  i18n-localization, strategy,   │
+│  shadcn, css-animations,        │
+│  next-best-practices, ...       │
+└─────────────────────────────────┘
+  │
+  │ 격리 컨텍스트 호출
+  ▼
+┌─────────────────────────────────┐
+│ 서브에이전트 (새 컨텍스트, read-only) │
+│                                 │
+│  Explorer (코드/패턴 광범위 탐색)  │
+│  pegboard-curator (시스템 지도)   │
+└─────────────────────────────────┘
+```
+
+## 자동 라우팅 — 슬래시 명령어 없이
+
+ADR-0005 의 핵심 결정.
+
+> **자동 라우팅 + 결정 지점만 확인.** 메인 에이전트가 지시를 받아 관련 파트(스킬)를 알아서 호출하고 한 번에 처리한다. 단계별 체크포인트(파트마다 보고→승인)는 채택하지 않는다 — 콜드 스타트 비용과 마찰이 이득을 상회.
+
+전용 `/peg` 같은 명령어를 만들지 않는다. 대신 `AGENTS.md` 의 **Orchestration & Dispatch** 섹션에 디스패치 매트릭스를 박아두고, *지시를 받으면 메인이 먼저 이 표를 적용한다*는 규칙을 세웠다.
+
+`AGENTS.md` 의 디스패치 매트릭스 (발췌):
+
+| 지시 유형                        | 파트 (스킬/에이전트)                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 카피 변경, 단일 클래스 수정      | 메인만                                                                                                               |
+| 컴포넌트 수정/추가               | `make-interfaces-feel-better` + `web-design-guidelines`                                                              |
+| 새 유틸 페이지 추가              | `pegboard-curator`(배치) → `seo-audit`, `make-interfaces-feel-better`, `tdd`, `frontend-design`                      |
+| 라우트/메타데이터/사이트맵 변경  | `seo-audit` + `pegboard-curator`(영향 범위)                                                                          |
+| 다국어 어감·번역 품질            | `i18n-localization` 스킬 (`messages/glossary.md` 앵커)                                                               |
+| 부적절 단어 차단                 | 금칙어 denylist 테스트 게이트 — `src/i18n/profanity.ts` + `tests/unit/profanity.test.ts` (`pnpm test`, AI 판단 아님) |
+| 트래픽 전략·우선순위·개선점 분석 | `strategy` 스킬 (GA4/GSC 스냅샷 `data/analytics/snapshot.json` 소비, `pnpm analytics:fetch`로 갱신)                  |
+| 광범위 코드 조사                 | `Explorer` 서브에이전트                                                                                              |
+| 아키텍처/리팩터링                | `improve-codebase-architecture` → `refactor`                                                                         |
+| 100페이지 시스템 드리프트 점검   | `pegboard-curator` 서브에이전트                                                                                      |
+
+이 매트릭스가 *왜* 강력한지 — **유지할 표면을 늘리지 않는다.** 슬래시 명령어를 만들면 그게 또 하나의 유지 대상이 된다. 매트릭스는 *대화 자체*에서 자동 적용되니까 추가 표면이 없다.
+
+## 두 서브에이전트 — 정확히 두 개
+
+페그보드에 있는 서브에이전트는 정확히 두 개다.
+
+### 1. `Explorer` (Claude Code 내장)
+
+광범위 코드/패턴 조사용. 검색 결과 노이즈를 *메인 컨텍스트에 쌓지 않고* 깨끗한 요약만 받는다. 호출 예시:
+
+> "`app/[locale]/` 아래 `SITE_URL`을 참조하는 모든 파일을 찾아 정확한 라인+주변 맥락을 보고. 빠른 폭넓은 탐색."
+
+답이 짧은 목록일 때 적합. 메인 컨텍스트가 grep 결과로 더러워질 일을 막아준다.
+
+### 2. `pegboard-curator` (커스텀, read-only)
+
+`.agents/agents/pegboard-curator.md` 에 정의. tools = `Read, Grep, Glob` 로 *권한 수준에서* read-only가 강제된다.
+
+```yaml
+---
+name: pegboard-curator
+description: System map keeper for Pegboard's utility pages. ...
+tools: Read, Grep, Glob
+---
+```
+
+답하는 질문은 정확히 세 가지다.
+
+> 1. **Placement** — "I want to add `<utility>`. Recommend slug, category, `i18nNamespace`, `homeKeyPrefix`, sibling utilities, and IA risks."
+> 2. **Change audit** — "Here is a diff / changed file list. Does it break any site-wide patterns?"
+> 3. **Drift scan** — "Scan the repo for utilities missing from the registry, nav entries with no matching utility, glossary terms used inconsistently, or i18n keys present in some locales but not others."
+
+그리고 매 호출마다 시스템 지도를 다시 읽는다.
+
+> Your authority comes from reading these files at the start of every invocation. Without them, your answer is hallucination.
+
+읽어야 할 파일들:
+
+1. `AGENTS.md`
+2. `docs/design-system.md`
+3. `src/utilities/registry.ts`
+4. `src/utilities/nav.ts`
+5. `messages/glossary.md`
+6. `messages/en.json` (필요 시 다른 로케일)
+7. `app/sitemap.ts`, `src/lib/seo/site.ts`
+8. `docs/adr/*.md`
+9. `docs/agent-architecture.md`
+
+이게 *왜 서브에이전트로 격리되는지*가 명확하다 — 이 9개 파일을 매 turn마다 메인 컨텍스트에 로드하면 메인이 진짜 일을 할 자리가 없어진다. Curator는 자기 컨텍스트에서만 이걸 들고, 메인에는 *결정 자료*만 돌려준다.
+
+### Curator의 출력 — 구조화
+
+```
+## Conclusion
+<한 단락 답>
+
+## Evidence
+<file path + line numbers>
+
+## Risks / open questions
+<bullets>
+
+## Suggested next steps
+<bullets>
+```
+
+이게 [8편의 전략 스킬](/blog/260616-pegboard-08-strategy-data-loop) 출력 포맷과 같은 사상이다 — *메인이 결정을 한 번에 읽을 수 있게.* 자유 형식 산문이 아니라 머리·증거·리스크·다음 단계로 분리.
+
+## 운영 5규칙
+
+`docs/agent-architecture.md` D 섹션의 5규칙.
+
+1. **메인만 최종 결정** — 서브에이전트 결과는 자료, 자동 승인된 변경안 아님.
+2. **서브에이전트는 read-only 기본** — 쓰기 권한 필요 시 파일 범위 명시 고정.
+3. **질문은 작게 스코프** — `"이 라우트가 static export 규칙을 위반할 가능성이 있는지 보고"` 같은 형태.
+4. **핸드오프는 메인이 통합** — 사용자에게는 "결론, 변경, 검증, 잔여 리스크"로 정리.
+5. **중복 방지** — 같은 일을 스킬·에이전트 둘로 만들지 않음. 인라인이면 스킬, 격리가 필요하면 에이전트.
+
+이 5규칙은 *추상적인 가이드라인*이 아니라 *실제 운영에서 깨지면 비용이 발생하는 룰*이다. 예를 들어 규칙 1이 깨지면 — 서브에이전트가 잘못된 추천을 했는데 메인이 그대로 실행 → 100페이지 시스템에 드리프트가 박힌다.
+
+## 문서들 — 각자 무엇을 책임지는가
+
+페그보드에는 메타 문서가 꽤 있다. 처음에는 *너무 많은 거 아닌가* 싶었는데, 각자 역할이 다르다.
+
+| 문서                              | 역할                                              | 매 세션 읽는가         |
+| --------------------------------- | ------------------------------------------------- | ---------------------- |
+| `AGENTS.md`                       | 라우팅 SoT, 디스패치 매트릭스, 개발 워크플로     | ✅ 항상                |
+| `CONTEXT.md`                      | 도메인 언어 — *이 단어가 무엇을 의미하는가*       | ✅ 도메인 작업이면     |
+| `docs/agent-architecture.md`      | 구조의 *왜* — 3계층, 5규칙, 데이터 소스           | 참조 시                |
+| `docs/engineering-playbook.md`    | 상세 플레이북 — UI/SEO 워크플로, 서브에이전트 호출 | 해당 작업 시           |
+| `docs/design-system.md`           | 시각 SoT (shadcn 프리셋)                          | UI 작업 시             |
+| `docs/adr/*.md`                   | 큰 결정의 이력 (11개)                             | 관련 결정 참조 시      |
+| `messages/glossary.md`            | 7로케일 용어 사전                                 | i18n 작업 시           |
+
+이 분리에서 중요한 부분 — **`AGENTS.md`만 항상 읽는다.** 나머지는 *상황에 따라.* 매 세션마다 모든 문서를 읽으면 메인 컨텍스트가 메타 정보로 가득 차서 실제 작업할 자리가 없어진다.
+
+`docs/engineering-playbook.md` 의 첫 줄이 이걸 명시한다.
+
+> 참조용 상세 플레이북. 매 세션 읽는 SoT가 아니라, 해당 작업을 할 때 펼쳐보는 자료다.
+
+## 로컬 스킬 14개
+
+`.agents/skills/` 아래 페그보드 전용 스킬 14개. (Claude Code 글로벌 스킬은 별도)
+
+```
+.agents/skills/
+├── css-animations
+├── frontend-design
+├── grill-with-docs       ← 10편에서 후기
+├── i18n-localization
+├── improve-codebase-architecture
+├── make-interfaces-feel-better
+├── next-best-practices
+├── refactor
+├── seo-audit
+├── shadcn
+├── strategy              ← 8편의 데이터 루프
+├── tdd
+├── vercel-react-best-practices
+└── web-design-guidelines
+```
+
+각자 *언제 트리거되는지*가 description에 박혀 있다. 메인이 작업 유형을 보고 자동으로 로드한다.
+
+## 워크플로 — i18n-fanout
+
+`.claude/workflows/i18n-fanout.js` 가 유일한 워크플로다. [4편](/blog/260612-pegboard-04-i18n)에서 다룬 6개 비영어 로케일 병렬 번역.
+
+워크플로는 *결정론적 orchestration*이 필요할 때 쓴다. 스킬은 메인이 *자연스럽게 적용*하는 것이고, 워크플로는 *고정된 순서로 fan-out → 합류 → 검증* 같은 흐름이 필요할 때.
+
+```javascript
+phase('Extract & terminology')    // 직렬, 1회
+  ↓
+phase('Translate (per-locale)')   // 6개 병렬
+  ↓
+phase('Verify')                   // 직렬, 1회
+```
+
+이런 흐름은 *대화의 자연스러운 흐름*으로 두면 누락된다 ("어, 검증 단계 까먹었네"). 워크플로로 굳히면 매번 같은 순서로 돈다.
+
+## "왜 이렇게 구조화 하는가" — 한 줄 답
+
+페그보드 에이전트 설정의 한 줄 요약은 이거다.
+
+> **유지할 표면을 최소화하면서, 시스템 드리프트를 자동으로 잡는다.**
+
+- 슬래시 명령어 0개 → 표면 X
+- 신규 서브에이전트 2개 (Explorer 내장 + Curator 커스텀) → 표면 최소
+- 스킬은 메인이 *자동으로 로드* → 사람이 기억할 필요 X
+- 디스패치 매트릭스는 *AGENTS.md 한 곳에만 존재* → 다른 곳에 중복 X
+- ADR이 큰 결정의 이력 → "왜 이렇게 했지" 질문에 git log 보다 빠른 답
+
+100페이지를 양산하는 일에서 *내가 매번 기억해야 할 룰의 개수*가 작아야 한다. 그래야 새 유틸 만들기에 집중할 수 있다.
+
+## 정리
+
+- 7개 서브에이전트로 시작했지만 결국 **2개 서브에이전트 + 14개 스킬 + 1개 테스트 게이트**가 됐다.
+- ADR-0002의 분리 기준: **스킬 = 인라인 규칙, 서브에이전트 = 격리·병렬·시스템 지도.** 기본은 스킬.
+- 자동 라우팅 = `AGENTS.md` 의 디스패치 매트릭스. 슬래시 명령어 안 만든다.
+- `Explorer` (탐색 노이즈 격리) + `pegboard-curator` (시스템 지도 격리, read-only는 권한으로 강제).
+- Curator는 매 호출마다 9개 SoT 파일을 자기 컨텍스트로 다시 로드. 메인 컨텍스트는 안 더럽힌다.
+- 운영 5규칙: 메인만 최종 결정 / 서브는 read-only / 작은 스코프 / 메인이 통합 / 스킬·에이전트 중복 금지.
+- 문서 분담: `AGENTS.md`(항상) / `CONTEXT.md`(도메인) / `agent-architecture`(왜) / `engineering-playbook`(상세) / `design-system`(시각) / `docs/adr`(큰 결정 이력) / `glossary.md`(용어).
+- 핵심: **유지할 표면을 최소화하면서 시스템 드리프트를 자동으로 잡는다.**
+
+마지막 편(10편)은 이 설정 안의 *한 의식* — `grill-with-docs` 스킬 — 이 어떻게 CONTEXT.md와 ADR을 살아있게 만드는지 후기를 쓴다.

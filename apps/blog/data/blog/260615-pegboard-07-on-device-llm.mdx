@@ -1,0 +1,233 @@
+---
+title: '브라우저에서 LLM을 — WebGPU + Gemma 로 온디바이스 채팅을 짜기'
+date: '2026-06-15T10:00:00'
+tags: ['pegboard', 'dev-log', 'webgpu', 'llm', 'gemma', 'on-device-ai']
+draft: true
+summary: '브라우저 안에서 Gemma 4 (2B) 를 WebGPU로 굴리는 온디바이스 채팅을 짰다. 멀티스레드 WASM은 광고를 깨고 셀프 호스팅은 25 MiB 한계에 막혔다. WebGPU + Hugging Face CDN + Worker 격리 + 토큰 버짓 트리밍으로 정리하면서, 이전 ADR 하나가 *카테고리 한정으로* 뒤집혔다.'
+images:
+  - '/static/images/ai.png'
+---
+
+![offline ai chat](/static/images/ai.png)
+
+[6편](/blog/260614-pegboard-06-ffmpeg-wasm)의 audio-converter가 페그보드에서 처음으로 무거운 유틸이었다면, 이번 편의 [offline-ai-chat](https://pegboard.me/en/offline-ai-chat/)는 *두 번째로 무거운* — 그리고 더 무거운 — 유틸이다.
+
+브라우저 안에서 Gemma 4 (2B 파라미터) 를 WebGPU로 굴린다. 프롬프트와 응답이 사용자 디바이스를 절대 떠나지 않는다. API 키도 없고, 서버 호출도 없고, 한 번 모델이 로드되면 *오프라인*으로도 동작한다.
+
+이 결정 (`docs/adr/0010-on-device-llm-webgpu-cdn-weights.md`, `docs/adr/0011-offline-ai-chat-conversational-surface.md`) 이 audio-converter와 비교했을 때 *진짜로 흥미로운* 부분이 있다.
+
+## ADR-0009의 결정이 뒤집힌다 — 카테고리 한정으로
+
+[6편](/blog/260614-pegboard-06-ffmpeg-wasm)에서 ADR-0009가 정한 핵심 규칙은 *"바이너리는 self-host, CDN 절대 안 됨"* 이었다.
+
+> Self-host the binary, never a CDN.
+
+Gemma 모델 가중치는 q4f16 양자화로 **~3 GB** 다. ffmpeg core가 30 MiB라서 gzip으로 9.8 MiB까지 줄였던 그 25 MiB 한계 — 여기엔 명함도 못 내민다.
+
+| 옵션                                                        | 결정 | 이유                                                         |
+| ----------------------------------------------------------- | ---- | ------------------------------------------------------------ |
+| Self-host weights under `public/` (ADR-0009 패턴)           | ❌   | **플랫폼 제약**. ~3 GB. CF Pages 25 MiB 한계. 분할해도 초과. |
+| CPU/WASM 추론 (광범위 브라우저 지원)                        | ❌   | 2B 모델 CPU 추론 → `SharedArrayBuffer` → COOP/COEP → 광고 깸 |
+| 클라우드 LLM API (OpenAI/Anthropic/Gemini)                  | ❌   | per-request 비용, API 키 노출 위험, 프라이버시 차별화 죽음   |
+| **WebGPU + Hugging Face CDN**                               | ✅   | 광고 호환, 추론 로컬, 가중치만 3rd-party                     |
+
+그래서 ADR-0010 이 명시적으로 적었다.
+
+> This **reverses ADR-0009's "self-host the binary, never a CDN" decision — for this category only** — because the weights are ~3 GB and Cloudflare Pages rejects any single asset ≥ 25 MB, so self-hosting is impossible.
+
+*카테고리 한정으로* 라는 한정자가 중요하다. ai 카테고리에만 적용. 다른 카테고리는 여전히 self-host 원칙.
+
+## 두 가지 자기 모순을 모두 인정한다
+
+ADR-0010의 가장 솔직한 부분이 *프라이버시 카피를 다르게 써야 한다*고 말한 부분이다.
+
+> **Privacy copy must differ from Audio Converter.** "Files never leave your machine / fully self-hosted" does **not** apply: inference is local, but the ~3 GB weights download once from the HF CDN. Frame it as "your conversation stays on your device; no server sees your prompts; no API key" — never "nothing ever leaves".
+
+| 영역      | Audio Converter (ADR-0009)                       | Offline AI Chat (ADR-0010)                                   |
+| --------- | ------------------------------------------------ | ------------------------------------------------------------ |
+| 파일/대화 | 머신을 안 떠난다                                 | 머신을 안 떠난다                                             |
+| 엔진      | self-host (gzip)                                 | Hugging Face CDN (~3 GB, 1회 다운로드 + 캐시)                |
+| 카피      | "Files never leave your machine, fully self-hosted" | "Your conversation stays on your device; no server sees your prompts" |
+
+CONTEXT.md 의 `Flagged ambiguities` 섹션에 한 줄로 박혀 있다.
+
+> Audio Converter's privacy claim ("files never leave your machine", fully self-hosted) does **not** transfer to Offline AI Chat: inference is local but **Model weights** are third-party-hosted (self-hosting is impossible under Cloudflare's 25 MB asset cap, ADR-0009). Word the privacy copy accordingly.
+
+이게 진짜 디테일이다 — *작은 차이가 사용자의 신뢰를 깨뜨릴 수 있는 위치*에서 정확한 단어를 쓴다.
+
+## WebGPU 라는 좁은 길
+
+ADR-0010의 또 다른 결정: **WebGPU가 유일한 compute path**.
+
+WASM CPU 추론이 가능하긴 하지만 그건 멀티스레드 WASM이고, 그러면 다시 `SharedArrayBuffer` → COOP/COEP → 광고 깸 의 *그 순환*이다. 단일스레드 WASM은 광고 안전하지만 2B 모델에는 *너무 느리다.* 사용 불가능한 속도.
+
+```
+SharedArrayBuffer가 필요한 경로 → 광고 호환 X
+빠른 추론이 필요 ↗
+
+WebGPU                              → 광고 호환 O (cross-origin isolation 불필요)
+WASM 멀티스레드                     → 광고 호환 X
+WASM 단일스레드                     → 광고 호환 O 이지만 너무 느림
+```
+
+결국 WebGPU 하나만 남는다. 현실적으로 desktop Chrome/Edge + 최근 Safari만 지원한다. **No-WebGPU 브라우저는 우아한 capability 메시지를 받는다 — compute fallback이 아니라.** 청중이 좁은 건 의도된 결정이다 (flagship 차별화).
+
+> Ad-safety rests on WebGPU needing no cross-origin isolation — confirm in a real browser that the page works with **no COOP/COEP** set. If that proves false, this decision must be revisited.
+
+이 확인은 코드 사이드보단 *브라우저에서 직접* 검증해야 한다. [AGENTS.md의 룰](/blog/260609-pegboard-01-start) — *"UI 완료 = 브라우저 실제 확인"* — 이 그대로 적용된다.
+
+## Worker 격리 — 두 가지 이유
+
+[transformers.js](https://github.com/xenova/transformers.js)는 *Web Worker 안에서 dynamic import*된다.
+
+```typescript
+// 메인 스레드
+const worker = new Worker(new URL('./llm-worker.ts', import.meta.url), {
+  type: 'module',
+});
+
+// llm-worker.ts (격리된 Worker 안)
+const { pipeline } = await import('@huggingface/transformers');
+```
+
+두 가지 이유가 있다.
+
+### 1. 다른 페이지 번들에 영향 X
+
+페그보드의 다른 ~20개 페이지는 LLM을 안 쓴다. transformers.js를 정적 import하면 라이브러리가 *모든 페이지 번들*에 들어간다. 그러면 dummy-text 페이지 같은 가벼운 유틸도 무거워진다.
+
+Dynamic import + Worker 안에서만 로드 = 이 페이지에 들어왔을 때만 다운로드된다. ffmpeg lazy-load와 동일한 규율 ([6편 참조](/blog/260614-pegboard-06-ffmpeg-wasm)).
+
+### 2. 생성이 광고 렌더링 스레드를 안 막는다
+
+LLM 토큰 생성은 GPU + 메인 스레드의 일이 섞인다. 메인 스레드에서 직접 돌면 광고 iframe 렌더링이 *프레임 단위로* 막힐 수 있다. Worker로 격리하면 생성은 워커, 광고/UI는 메인.
+
+> generation never blocks the ad-rendering main thread.
+
+## 모델 로드 실패의 복구 — Worker 종료·재생성
+
+한 회귀 수정 커밋의 메시지가 흥미롭다.
+
+```
+fix(offline-ai-chat): 모델 로드 실패 시 Worker 종료·재생성으로 깨끗한 재시도
+```
+
+처음에는 *동일 Worker 안에서 재시도*했다. 그런데 모델 로드가 실패하면 Worker가 *부분적으로* 초기화된 상태로 남는다. 일부 WASM 모듈은 로드됐고, 일부 GPU 자원은 잡혔고, 일부 메모리는 할당됐다. 그 상태에서 다시 `init`을 부르면 깨끗하게 *되감기지 않는다* — 두 번째 시도가 첫 번째보다 더 이상한 방식으로 깨진다.
+
+해결: **실패 시 Worker 자체를 terminate하고 새로 생성.** 깨끗한 상태에서 다시 시작.
+
+```typescript
+// 의사 코드
+try {
+  await worker.postMessage({ type: 'init' });
+} catch (err) {
+  worker.terminate();
+  worker = createWorker();  // fresh
+  await worker.postMessage({ type: 'init' }); // retry
+}
+```
+
+이게 단순해 보이지만, *Worker 컨텍스트가 가질 수 있는 상태가 너무 많다*는 인식에서 나온다. JS 객체, GPU 자원, WASM 인스턴스, 다운로드 중인 fetch. 부분 실패에서 *제대로* 복구하려고 노력하기보다 깨끗하게 다시 시작하는 게 더 정직하다.
+
+## 토큰 버짓 트리밍 — OOM 방지
+
+또 다른 커밋 메시지.
+
+```
+fix(offline-ai-chat): 단일 초과 턴을 토큰 버짓에 맞게 잘라 OOM 방지
+```
+
+WebGPU 환경에서 사용자가 *한 번에 매우 긴 메시지*를 보내면, 그 한 턴이 모델의 context window를 초과할 수 있다. 그러면 GPU 메모리 부족 → OOM crash. 페이지 전체가 죽는다.
+
+해결: **한 턴이 토큰 버짓을 초과하면 자른다.** 대화 끝부분(가장 최근)을 유지하면서 앞쪽을 자른다.
+
+이게 LLM 채팅 UX의 기본기이긴 한데, 직접 처리해야 하는 게 *온디바이스의 책임*이다. OpenAI API라면 서버가 잘라줄지도 모르지만, 여기선 우리가 잘라야 한다.
+
+## ChatGPT 스타일 UI — 그러나 우리 토큰으로
+
+ADR-0011 이 다른 모든 페그를 깨뜨리는 *예외 페이지*를 정의한다.
+
+다른 ~20개 페그는 *동일한 페이지 구조*를 따른다:
+
+```
+[UtilityHero]   ← 제목 + 부카피 + 도구 옵션
+[Tool card]     ← 입력 / 출력
+[Learn section] ← 4개 article, SEO 본문
+```
+
+offline-ai-chat은 이 구조를 *전부 버린다.*
+
+```
+[App shell — sidebar + header]  ← 유지
+[Viewport-locked region]
+  ├── (대화 시작 전) centered greeting + 모델 다운로드 consent
+  ├── (대화 중) messages list + pinned input bar
+  └── (assistant streaming) → markdown + 코드블록 (CodeMirror)
+```
+
+`h-[calc(100svh-4rem)]`, `SidebarInset`의 `overflow-hidden`. 콘텐츠 전체가 viewport에 잠긴다. 대화 영역만 스크롤한다. 이건 **ChatGPT의 layout** — 그러나 페그보드 shadcn 토큰으로 그려진다 ([ADR-0007](/blog/260613-pegboard-05-pegman-retirement)). ChatGPT의 *palette/font를 가져온 게 아니다.*
+
+ADR-0011이 솔직하게 적은 trade-off:
+
+> This page is the one deliberate exception to the standard utility composition. ... that divergence is intentional, not drift. Do not "fix" it back to the template; do not copy this layout to other pegs without the same explicit justification.
+
+미래의 내가 (또는 다른 누군가가) "이 페이지가 다른 페이지랑 달라요 — 통일 시켜야겠죠?" 라고 하지 못하도록 ADR에 박았다.
+
+## SEO 비용 — 의도적 수용
+
+대신 잃은 게 있다. 다른 페그는 *큰 learn section*이 indexable한 SEO 본문 역할을 한다. offline-ai-chat에는 그게 없다.
+
+> SEO for this peg now rests on meta tags + the `sr-only` H1 alone — the page lost its on-page keyword body. This is a real ranking cost accepted for UX.
+
+대신 brand로 메우려 했다. **"Peg AI"** 라는 ai 카테고리 서브브랜드.
+
+> "Peg AI" sub-brand for the `ai` category. The `ai` category label (`Categories.ai`) reads **"Peg AI"** in all seven locales (untranslated, like `Pegman`; registered in `messages/glossary.md`).
+
+`messages/glossary.md`의 *번역하지 않는 고유명사*에 등록.
+
+```
+| Peg AI | `ai` 카테고리 서브브랜드명. 모든 로케일에서 `Peg AI` 그대로(번역·음차 안 함). |
+```
+
+사용자 카피에서는 *모델 벤더(Gemma)나 CDN(Hugging Face)을 노출하지 않는다.* 모델은 그냥 "Peg AI" 또는 "AI model"로 부른다. `Gemma`/`Hugging Face`는 코드와 ADR-0010에만 남는 구현 디테일.
+
+## 코드 블록 — 하이브리드 렌더러
+
+작은 디테일이지만 ADR-0011에 적은 결정 하나가 좋은 예다. assistant 응답이 markdown으로 렌더링되는데, 코드 블록(\`\`\`code\`\`\`)을 어떻게 그릴까?
+
+```
+옵션 A: 매 토큰마다 CodeMirror 마운트
+  → 무겁고 불완전한 펜스에서 깜빡임
+
+옵션 B: 항상 plain <pre>
+  → 코드 하이라이트 X, 페그보드 다른 페이지(CodeBlock)와 일관성 X
+
+옵션 C: 하이브리드 — 스트리밍 중에는 <pre>, settled되면 CodeBlock으로 swap
+  → 채택
+```
+
+ADR-0011:
+
+> fenced code blocks use a **hybrid** renderer — a plain `<pre>` while a reply is still streaming, upgrading to the shared CodeMirror `CodeBlock` (ADR-0008, with a new `lineNumbers={false}` presentation mode) once the message settles.
+
+스트리밍 중 코드블록을 CodeMirror로 매번 mount/unmount하면 GPU + main thread 둘 다 부담된다. 그래서 *완성될 때까지는 가볍게*, 완성되면 *기존 페그보드 코드블록과 동일한 렌더*로 업그레이드.
+
+같은 ADR에서 작은 부가 변경.
+
+> `CodeBlock` gained a `lineNumbers?: boolean` prop (default `true`). The change is additive; the six existing tool call sites keep line numbers. Chat code blocks pass `false` for a non-editor presentation look.
+
+기존 6개 콜사이트에 영향 없는 *additive* 변경. 이런 detail이 시스템 전체의 일관성을 유지한다.
+
+## 정리
+
+- 브라우저에서 Gemma 4 E2B를 WebGPU로 굴림. 프롬프트·응답이 디바이스를 안 떠나고, 한 번 로드 후 오프라인 동작.
+- ADR-0009의 *"self-host, never CDN"* 결정이 **ai 카테고리 한정으로 뒤집힘** — ~3 GB 가중치는 CF Pages 25 MiB 한계로 self-host 불가능.
+- 멀티스레드 WASM은 광고 깸 → WebGPU가 유일한 path. desktop Chrome/Edge + 최근 Safari만 지원, no-WebGPU는 graceful capability 메시지.
+- transformers.js는 *Worker 안 dynamic import*. 다른 페이지 번들 안 더럽힘 + 생성이 광고 렌더 스레드 안 막음.
+- 모델 로드 실패 복구: 동일 Worker에서 재시도 X, **terminate + 재생성**. 부분 실패 상태가 깨끗하게 안 되감기는 문제.
+- 한 턴이 토큰 버짓 초과하면 자른다 — OOM crash 방지. 온디바이스의 책임.
+- ADR-0011이 *예외 페이지*를 명시. ChatGPT layout + 페그보드 shadcn 토큰. learn section 없음 = SEO 비용 의도적 수용.
+- **"Peg AI"** 서브브랜드로 메움. 사용자 카피는 Gemma/HF를 노출 안 함.
+- 코드블록은 *하이브리드* — 스트리밍 중 plain `<pre>`, settled되면 CodeMirror. 기존 CodeBlock에 `lineNumbers={false}` 추가는 *additive*.
+
+다음 편은 *이 모든 페이지를 굴리는 결정을 어떻게 내리는가* — **GA4 + GSC 데이터 루프** 얘기다.

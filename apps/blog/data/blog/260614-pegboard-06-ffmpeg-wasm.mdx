@@ -1,0 +1,186 @@
+---
+title: '브라우저에서 ffmpeg 를 돌리기 — 광고와 25MiB 한계 사이에서 오디오 컨버터를 짜기'
+date: '2026-06-14T10:00:00'
+tags: ['pegboard', 'dev-log', 'wasm', 'ffmpeg', 'audio', 'cloudflare']
+draft: true
+summary: '브라우저 안에서 ffmpeg 를 돌려 오디오를 변환하는 유틸을 짰다. 멀티스레드 코어는 광고를 깨고, 단일스레드 코어는 30MiB라 Cloudflare Pages 25MiB 한계에 걸린다. gzip 셀프 호스팅 + 클라이언트 DecompressionStream + Batch 모드 + 다운로드 진행률 UX로 정리한 이야기.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![ffmpeg.wasm in browser](/static/images/coffee_machine_2.png)
+
+[5편](/blog/260613-pegboard-05-pegman-retirement)까지 시스템·다국어·브랜드를 다뤘으니, 이번 편부터는 *진짜로 무거운 유틸* 얘기다. 첫 번째는 [audio-converter](https://pegboard.me/en/audio-converter/).
+
+브라우저 안에서 MP3 → WAV, OGG → M4A, FLAC ↔ MP3 같은 *진짜* 오디오 트랜스코딩을 한다. 파일은 사용자 머신을 절대 떠나지 않는다. 시스템 결정을 `docs/adr/0009-single-threaded-ffmpeg-wasm-audio.md` 에 박아뒀다.
+
+## 두 갈래 길 — 멀티스레드 vs 단일스레드
+
+`@ffmpeg/core`에는 두 종류가 있다.
+
+- **`@ffmpeg/core-mt`** — 멀티스레드. 빠르다.
+- **`@ffmpeg/core`** — 단일스레드. 느리다.
+
+빠른 게 좋아 보이지만, 멀티스레드는 `SharedArrayBuffer`를 쓴다. 이게 브라우저에서 활성화되려면 **`COOP/COEP` cross-origin isolation 헤더**가 필요하다. 그리고 이 헤더가 들어가면 — 3rd-party 광고 iframe이 깨진다.
+
+| 옵션                 | 속도 | 광고 호환 | 다른 문제                    |
+| -------------------- | ---- | --------- | ---------------------------- |
+| `@ffmpeg/core-mt`    | 빠름 | ❌        | 광고 수익이 사라짐           |
+| `@ffmpeg/core` (단일) | 느림 | ✅        | 30MiB 페이로드               |
+| Web Audio API only   | -    | ✅        | 디코드만 가능, 트랜스코딩 X  |
+
+[1편](/blog/260609-pegboard-01-start)에서 *"광고로 먹고살기로 한 순간 쓸 수 있는 기술의 집합이 좁아진다"*고 했는데, 이게 정확히 그 사례다. 멀티스레드는 거부.
+
+> Rejected — conflicts with the monetization model.
+
+## 두 번째 문제 — Cloudflare Pages 25MiB 한계
+
+단일스레드 `@ffmpeg/core` 로 가기로 했다. 그런데 이게 압축 안 된 raw 형태로 **30.7 MiB**다.
+
+Pegboard는 Cloudflare Pages에 배포한다. CF Pages의 하드 캡:
+
+> 단일 자산 25 MiB. 비-설정 가능.
+
+30.7 MiB 파일을 self-host하면 배포 검증에서 거부된다. 옵션:
+
+| 옵션                                          | 결정       | 이유                                                                          |
+| --------------------------------------------- | ---------- | ----------------------------------------------------------------------------- |
+| 멀티스레드 (`core-mt`)                        | ❌         | 광고 호환 X                                                                   |
+| CDN 호스팅 (jsdelivr)                         | ❌         | 3rd-party 런타임 의존성, 프라이버시 약화                                      |
+| Git LFS                                       | ❌         | 모든 contributor·CI에 git-lfs 강제                                            |
+| Git에 30MiB 바이너리 커밋                     | ❌         | git 비대화                                                                    |
+| **gzip 압축 + 클라이언트 inflate**            | ✅         | 9.8 MiB로 떨어짐. CF 한계 통과. self-host 유지                                |
+
+선택은 *gzip 압축 self-host*. 30.7 MiB → ~9.8 MiB. 클라이언트가 `DecompressionStream('gzip')`로 inflate.
+
+## 빌드 스크립트 — `scripts/copy-ffmpeg-core.mjs`
+
+`@ffmpeg/core`는 pinned npm 의존성이다. 매번 `postinstall` + `prebuild`에 도는 *idempotent* 스크립트가:
+
+1. `node_modules/@ffmpeg/core/dist/` 에서 `ffmpeg-core.js` (그대로) + `ffmpeg-core.wasm` (gzip 압축)을 `public/ffmpeg/` 로 복사
+2. stale raw `.wasm`이 있으면 제거 (CF가 30MiB 파일을 보면 즉시 거부)
+3. gzip 후 크기가 25 MiB를 *초과하면 빌드 하드 fail* — CF의 한계 검사는 `pnpm build` 시점에 안 도니까 이게 유일한 사전 가드
+
+ADR-0009 에 그 흐름이 한 단락으로 박혀 있다.
+
+> The copy script gzips the wasm (and removes any stale raw copy so CF never sees the 30MB file), then **hard-fails the build if the `.gz` ever creeps over 25 MiB** (CF's check does **not** run during `pnpm build`, so this is the only pre-deploy guard).
+
+## 클라이언트 inflate — 그런데 *조건부*로
+
+여기 작은 함정이 하나 더 있다. 일부 정적 호스트는 `.gz` 자산을 *`Content-Encoding: gzip` 헤더로* 서빙한다. 그러면 브라우저가 자동 inflate하고 `fetch`는 raw wasm bytes를 돌려준다. *우리가 또 inflate를 시도하면 두 번 inflate되어 깨진다.*
+
+해결책: **gzip magic number를 체크하고 조건부로 inflate.**
+
+```typescript
+// src/lib/gzip.ts (의사 코드)
+async function maybeInflateGzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
+  const bytes = new Uint8Array(buf);
+  // gzip magic number: 0x1f 0x8b
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    return await inflateGzip(buf);
+  }
+  return buf; // 이미 inflate된 상태
+}
+```
+
+자세한 건 ADR-0009에 적어뒀다.
+
+> The browser inflates it via `DecompressionStream('gzip')`, but **conditionally on the gzip magic number** — some static hosts serve a `.gz` asset with `Content-Encoding: gzip` (the browser then inflates it transparently and `fetch` yields raw wasm bytes), so blind decompression would break on those hosts.
+
+## v1 출하 포맷 — Opus 가 빠진 이유
+
+처음에는 5개 + Opus 6개 포맷을 다 지원하려고 했다. 그런데 단일스레드 core는 `.opus` 머싱(muxing)에서 wasm trap 으로 죽는다 — libopus 인코더 초기화는 되는데, 머싱 단계에서 abort.
+
+브라우저에서 한 번 그리고 또 한 번 확인했다. 단일스레드 core 빌드 자체의 버그였다. 그래서 ADR-0009 에 솔직히 적었다.
+
+> **v1 ships five output formats: MP3, WAV, OGG, M4A, FLAC.** Opus was scoped out: this core build initialises the libopus encoder but then aborts (wasm trap) while muxing `.opus`, on both first and repeated runs — verified in-browser.
+
+다른 다섯 개는 한 엔진 안에서 *반복 변환*도 안정적으로 돈다. Opus는 muxing 버그 없는 core 빌드가 나오면 그때 재방문.
+
+## 다운로드 진행률 UX — 9.8 MiB는 길다
+
+`@ffmpeg/core` (gzip)는 ~9.8 MiB다. 빠른 회선에서도 1~2초는 걸리고, 모바일에선 10초 이상. 사용자가 *변환 버튼을 눌렀는데* 페이지가 멍한 채로 10초를 기다리면 ... 페이지가 죽었다고 생각한다.
+
+후속 커밋에서 wasm 다운로드 진행률을 UI에 띄웠다.
+
+```
+Loading conversion engine...
+[████████░░░░░░░░] 47%  4.6 MiB / 9.8 MiB
+```
+
+`fetch` 응답의 `ReadableStream` 을 읽으면서 누적 byte 수를 진행률 바에 반영한다. 이게 *지능적인 트릭이 아니라* "기다리는 동안 뭔가 일어나고 있다는 신호"를 주는 가장 단순한 방법이다.
+
+## 옵션 사전 노출 — UX 디테일
+
+또 다른 후속 커밋에서 작은 UX 변경을 했다. **업로드 전에도 포맷·비트레이트 옵션을 노출.**
+
+직관과 반대로 보일 수 있다. "파일을 안 올렸는데 포맷을 왜 보여줘?" 그런데 사용자 시나리오를 따라가보면 답이 나온다.
+
+```
+시나리오 A (옵션이 업로드 후에만 보임):
+  1. 사용자: 페이지 열기
+  2. 사용자: "MP3 → WAV 가 되는지 모르겠네... 일단 파일을 올려볼까"
+  3. (파일 업로드, 9.8 MiB wasm 다운로드 시작)
+  4. 사용자: "어... WAV가 옵션에 없으면 어쩌지"
+  5. 사용자: 이탈
+
+시나리오 B (옵션이 처음부터 보임):
+  1. 사용자: 페이지 열기 + 옵션 목록 봄: MP3, WAV, OGG, M4A, FLAC
+  2. 사용자: "원하는 게 있네"
+  3. 파일 업로드 → 변환
+```
+
+업로드 전에 *내가 원하는 변환이 가능한지*를 알려주는 게 사용자에게 더 친절하다. 광고 친화 사이트에서 이탈률은 직접적인 비용이다.
+
+## Batch 모드 — 여러 파일 일괄 변환
+
+그 다음 커밋에서 Batch 모드를 추가했다. 사용자가 파일을 1개~20개까지 한 번에 올리고, 동일한 출력 포맷·비트레이트로 일괄 변환.
+
+`CONTEXT.md` 의 정의:
+
+> **Batch**: 한 번의 실행에서 함께 큐에 들어간 입력 파일들의 집합. 하나의 출력 Format 토큰(과 비트레이트)을 공유한다. **순차적으로** 처리된다 — 단일스레드 엔진(ADR-0009)이 한 번에 한 파일씩 transcode 한다.
+
+설계 결정 두 개:
+
+1. **순차 처리** — 단일스레드 엔진이라 동시 처리가 의미 없다. 한 파일씩 도는 게 정직하다.
+2. **per-file 실패는 skip** — 파일 한 개의 변환이 실패해도 다음 파일로 넘어간다. 다만 *엔진 로드 실패*는 전체 Batch를 abort 한다 (엔진 없이는 한 파일도 못 한다).
+
+### Batch가 일반 용어인 이유
+
+CONTEXT.md를 보면 흥미로운 한 줄이 있다.
+
+> 일반 용어로 향후 multi-input 유틸리티들에서 재사용 가능.
+
+오디오 컨버터 *전용*이 아니라 *Batch* 라는 일반 개념으로 정의했다. 나중에 PDF 합치기, 이미지 일괄 압축 같은 multi-input 유틸이 들어와도 같은 용어·같은 UI 패턴을 재사용할 수 있게.
+
+이게 [3편](/blog/260611-pegboard-03-utility-registry)에서 말한 *시스템 코히어런스*다. 한 유틸이 다음 유틸의 어휘에 영향을 미친다.
+
+## 광고와 충돌하지 않는다는 약속
+
+이 모든 결정의 닻은 *"광고 호환 유지"* 였다. 정리하면:
+
+```
+SharedArrayBuffer 안 씀
+  → COOP/COEP 헤더 불필요
+  → 3rd-party 광고 iframe 정상
+  → 광고 수익 유지
+```
+
+ADR-0009의 첫 문단이 이 닻을 정확히 말한다.
+
+> To ship the Audio Converter on a static-export, display-ad-monetized site, we transcode with the **single-threaded** `@ffmpeg/core` (not `core-mt`), self-hosted under `public/`. The multi-threaded core needs `SharedArrayBuffer`, which requires `COOP`/`COEP` cross-origin-isolation headers — un-settable reliably on a static host and, worse, isolation breaks third-party display-ad scripts/iframes.
+
+처음에 봤을 땐 "꽤 길고 자세한 ADR이네" 정도였는데, 다시 보면 *비즈니스 모델이 기술 선택을 끌고 다닌* 깔끔한 기록이다.
+
+## 정리
+
+- 브라우저에서 ffmpeg.wasm 으로 오디오 트랜스코딩 — MP3/WAV/OGG/M4A/FLAC 5종, 파일은 머신을 안 떠난다.
+- **멀티스레드 core는 거부** — `SharedArrayBuffer`가 광고 iframe을 깬다. 광고 수익 모델과 충돌.
+- 단일스레드 core는 30.7 MiB → Cloudflare Pages 25MiB 한계 초과. **gzip 압축**으로 9.8 MiB까지 줄여서 self-host.
+- 클라이언트 inflate는 *조건부* — 일부 호스트가 자동 inflate해주므로 gzip magic number(`0x1f 0x8b`)를 체크하고 필요할 때만 inflate.
+- Opus는 v1에서 빠짐 — 단일스레드 core가 muxing에서 wasm trap. 다른 5개는 안정.
+- **9.8 MiB 다운로드 진행률 UX** + **업로드 전 옵션 사전 노출** = 이탈 방지.
+- **Batch 모드** — 1~20 파일, 단일 출력 포맷, 순차 처리, per-file skip, 엔진 로드 실패는 전체 abort. *일반 용어*로 정의해서 future multi-input 유틸들이 재사용.
+- 비즈니스 모델(광고)이 기술 선택(`core-mt` 거부)을 끌고 다닌다 — ADR-0009의 모든 결정의 닻이다.
+
+다음 편은 더 무거운 유틸 — **브라우저에서 LLM을 돌린 온디바이스 채팅** 얘기다. 거기선 self-host가 *불가능*해지고, ADR-0009의 결정 하나가 뒤집힌다.

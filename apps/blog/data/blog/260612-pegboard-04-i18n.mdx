@@ -1,0 +1,262 @@
+---
+title: '7개 로케일을 운영한다는 것 — next-intl · 글로사리 · 병렬 번역 워크플로'
+date: '2026-06-12T10:00:00'
+tags: ['pegboard', 'dev-log', 'i18n', 'next-intl', 'localization', 'workflow']
+draft: true
+summary: '100페이지 × 7로케일 = 700개의 번역 단위. 직접 번역하지 않을 거라면 시스템이 일을 대신해야 한다. 글로사리로 용어를 한 번 고정하고, 새 유틸 추가 시 6개 비영어 로케일을 병렬 번역하는 워크플로, 그리고 부적절 단어는 AI 판단이 아니라 결정론적 테스트 게이트로.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![7개 로케일 운영](/static/images/coffee_machine_2.png)
+
+[3편](/blog/260611-pegboard-03-utility-registry)에서 레지스트리가 시스템의 심장이라 했다. 이번 편은 그 위에 올라가는 무거운 짐 — **7개 로케일** 운영 얘기다.
+
+## 왜 처음부터 7개냐
+
+Pegboard의 로케일은 `src/i18n/routing.ts`에 7개로 박혀 있다.
+
+```typescript
+en, ko, ja, zh-Hans, zh-Hant, fr, es
+```
+
+- **en** — 영어 (베이스)
+- **ko** — 한국어 (내가 모국어)
+- **ja** — 일본어
+- **zh-Hans / zh-Hant** — 중국어 간체 / 번체
+- **fr** — 프랑스어
+- **es** — 스페인어
+
+이게 합리적인 숫자인지는 처음에 헷갈렸다. 작게 시작해서 늘리는 게 보통이다. 그런데 광고 수익을 노린 ~100페이지 사이트에서 **유입 트래픽의 절반 이상은 비영어권에서 나온다.** 처음부터 다국어를 안 깔면 나중에 100페이지를 7배로 곱해 채우는 작업이 기다린다.
+
+> 100페이지 × 7로케일 = 700개의 번역 단위.
+
+이 숫자를 사람이 손으로 채울 일이 아니다. 시스템이 일을 대신해야 한다.
+
+## next-intl — 메시지 파일 7개
+
+`next-intl`을 쓴다. 로케일별로 `messages/<locale>.json` 한 파일씩.
+
+```
+messages/
+├── en.json           ← 베이스 (영어 원본)
+├── ko.json
+├── ja.json
+├── zh-Hans.json
+├── zh-Hant.json
+├── fr.json
+└── es.json
+```
+
+각 파일은 동일한 키 구조를 가져야 한다. 한 로케일에만 키가 있고 다른 로케일에 없으면 그 페이지의 그 로케일 빌드가 깨진다. 이걸 막는 게 `tests/unit/messages.test.ts` 의 **구조 정합 게이트** — 7개 파일의 키 트리가 정확히 일치하는지 단위 테스트로 잡는다.
+
+```typescript
+// 의사 코드
+test('all 7 locales share the same key structure', () => {
+  const enKeys = getAllKeys(en)
+  for (const locale of ['ko', 'ja', 'zh-Hans', 'zh-Hant', 'fr', 'es']) {
+    expect(getAllKeys(messages[locale])).toEqual(enKeys)
+  }
+})
+```
+
+## 진짜 어려운 건 *키 구조* 가 아니라 *어감*
+
+다국어를 머신으로 채우면 키 구조는 맞춰진다. *문제는 어감*이다.
+
+- 일본어로 `Tool`을 매번 다르게 번역한다 → 사이트 전체가 따로 노는 톤이 된다
+- 중국어 간체에서 *Encode* 를 `编码`이라고 했다가 다음 페이지에선 `加密` (이건 *Encrypt*다) 으로 갔다 → 사용자가 혼란
+- 프랑스어 `Payload` 를 어떨 땐 `Charge utile`, 어떨 땐 `payload` → 같은 문서 안에서 일관성 깨짐
+
+이 문제의 해결책이 **글로사리(glossary)** 다.
+
+## `messages/glossary.md` — 7로케일 용어 사전
+
+`messages/glossary.md` 에 자주 등장하는 용어를 7로케일로 못 박아뒀다. 일부 발췌.
+
+| EN               | KO             | JA                   | zh-Hans    | zh-Hant    | FR                | ES                      |
+| ---------------- | -------------- | -------------------- | ---------- | ---------- | ----------------- | ----------------------- |
+| Tool             | 도구           | ツール               | 工具       | 工具       | Outil             | Herramienta             |
+| Encode           | 인코딩         | エンコード           | 编码       | 編碼       | Encoder           | Codificar               |
+| Decode           | 디코딩         | デコード             | 解码       | 解碼       | Décoder           | Decodificar             |
+| Format           | 포맷           | フォーマット         | 格式化     | 格式化     | Format            | Formato                 |
+| Timezone         | 타임존         | タイムゾーン         | 时区       | 時區       | Fuseau horaire    | Zona horaria            |
+| Bitrate          | 비트레이트     | ビットレート         | 比特率     | 位元率     | Débit binaire     | Tasa de bits            |
+
+이게 단순한 사전이 아니다. **새 번역은 이 표를 따른다.** 표에 없는 용어를 쓰고 싶으면 PR에서 이유를 명시하거나 글로사리를 먼저 갱신한다.
+
+JWT 같은 도메인 별로 별도 표가 있고, **번역하지 않는 고유명사**도 따로 등재한다 (`Pegboard`, `Pegman`, `Peg AI`, `JWT`, `MP3/WAV/OGG/M4A/FLAC` 등).
+
+### 개발 현장 관용에 맞춘 예외
+
+이 표가 흥미로운 디테일을 하나 가지고 있다. JWT 도메인 표에 이런 주석이 있다.
+
+> 개발 현장 관용에 따라 일부 용어는 영어 그대로 둔다: ES는 token·payload·claim, FR는 token.
+
+스페인어로 *payload* 를 `Carga útil`이라고 번역할 수 있긴 한데, 스페인어권 개발자가 *payload* 라고 쓰는 빈도가 압도적이다. 사전을 따르는 것보다 *현장 관용*을 따르는 게 사용자에게 더 자연스럽다. 이런 결정은 자동화로는 못 잡는다. 모국어 화자 검토가 들어가야 한다.
+
+## i18n-fanout — 6개 비영어 로케일 병렬 번역 워크플로
+
+새 유틸 하나를 추가하면 영어 키만 ~10~30개 새로 생긴다. 이걸 6개 비영어 로케일에 채우는 일은 *disjoint 파일을 6번 번역하는* 완벽한 fan-out 케이스다. 그래서 [Claude Code Workflow](https://docs.claude.com/en/docs/claude-code)로 짰다 (`.claude/workflows/i18n-fanout.js`).
+
+```javascript
+export const meta = {
+  name: 'i18n-fanout',
+  description:
+    "Translate one utility's new i18n keys into all 6 non-English locales in parallel, glossary-anchored, then verify structural alignment",
+  phases: [
+    { title: 'Extract & terminology' },
+    { title: 'Translate (per-locale)' },
+    { title: 'Verify' },
+  ],
+};
+```
+
+세 단계로 도는 워크플로다.
+
+### Phase 1 — 추출 + 용어 결정 (직렬, 1회)
+
+영어 원본을 messages/en.json 에서 꺼내고, glossary.md를 읽어 *이 유틸에서 등장하는 반복 용어*에 대한 결정을 먼저 한다. 글로사리에 없는 용어가 있으면 `glossaryGaps` 로 분리해서 띄운다 — 그 갭을 그대로 두고 fan-out 하면 *6개 로케일이 6가지 번역으로 갈라진다.*
+
+```javascript
+const extract = await agent(
+  `You are preparing a glossary-anchored translation brief for the Pegboard utility namespace "${namespace}".
+
+  Steps:
+  1. Read messages/en.json and extract the FULL object under the top-level "${namespace}" key, ...
+  2. Read messages/glossary.md. Identify every recurring domain term ...
+  3. For each recurring term, record the agreed cross-locale rendering anchored on the glossary. If a needed term is NOT in the glossary, list it under glossaryGaps (do not invent one — flag it).`,
+  { schema: EXTRACT_SCHEMA, phase: 'Extract & terminology' }
+);
+
+if (extract.glossaryGaps?.length) {
+  log(`⚠ Glossary gaps — confirm/extend messages/glossary.md before trusting fan-out`);
+}
+```
+
+이 단계가 **시스템적 일관성을 결정한다.** 용어를 먼저 고정하고 나면, 6개 로케일이 그 결정 위에서 각자 번역해도 어휘가 갈라지지 않는다.
+
+### Phase 2 — 6개 로케일 병렬 번역
+
+```javascript
+const LOCALES = ['ko', 'ja', 'zh-Hans', 'zh-Hant', 'fr', 'es'];
+
+const results = await parallel(
+  LOCALES.map((loc) => () =>
+    agent(
+      `You are a native ${loc} localizer for Pegboard...
+      Apply the i18n-localization skill's quality bar: native-appropriate phrasing,
+      NOT machine translation, NOT copied English.
+
+      Translation brief (English source + agreed terminology to honor for consistency):
+      ${brief}
+
+      You are the ONLY writer of messages/${loc}.json — the other 5 locales are handled
+      by parallel agents writing different files, so there is no write conflict.`,
+      { schema: TRANSLATE_SCHEMA, phase: 'Translate (per-locale)', label: `translate:${loc}` }
+    )
+  )
+);
+```
+
+`parallel(...)`이 6개의 에이전트를 동시에 띄운다. 각자 자기 로케일 파일만 편집한다 — 쓰기 충돌이 없다. 모두 같은 *번역 브리프*(Phase 1의 결과물)를 들고 들어가므로 어휘는 일관된다.
+
+### Phase 3 — 구조 정합 검증
+
+```javascript
+const verify = await agent(
+  `Verify the i18n fan-out for namespace "${namespace}" ...
+
+  Run exactly these and capture output:
+    pnpm test --run tests/unit/messages.test.ts
+    pnpm typecheck
+
+  messages.test.ts is the structural-alignment gate: it asserts all 7 locale files
+  share an identical key structure. Report:
+  - Did both commands pass?
+  - If messages.test.ts failed, name the offending locale(s) and the missing/extra keys.
+  - Spot-check that each non-English locale's "${namespace}" namespace is present,
+    non-empty, and actually translated (not English copy).`,
+  { label: 'verify-gate', phase: 'Verify' }
+);
+```
+
+마지막 단계가 결정적이다. **구조 정합은 결정론적 테스트가 잡는다.** AI가 "다 됐어요" 라고 말하는 것에 의존하지 않는다. `pnpm test`가 그린이면 그린이다.
+
+## ICU 함정 — `<root>` 한 글자가 빌드를 깨뜨린 사건
+
+한 커밋 메시지에 짧은 회고가 적혀 있다.
+
+> fix(i18n): json-to-xml 설명의 `<root>`가 next-intl UNCLOSED_TAG 유발 — 각괄호 제거
+
+`json-to-xml` 페이지 설명에 *"이 변환기는 `<root>` 요소를 만들고..."* 라는 문장이 들어 있었다. next-intl ICU 파서가 `<root>` 를 *next-intl 의 리치 텍스트 태그*로 해석하려고 했고, 닫는 태그가 없으니 `UNCLOSED_TAG` 에러로 죽었다.
+
+해결은 단순했다 — 각괄호를 빼고 *"이 변환기는 root 요소를 만들고..."* 로 고쳤다. 하지만 교훈은 작지 않다.
+
+> **i18n 메시지 파일의 문자열은 단순한 텍스트가 아니다 — ICU 메시지 포맷이다.**
+
+i18n-fanout 워크플로의 번역 에이전트 프롬프트에도 이 함정을 박아뒀다:
+
+```
+4. Preserve ICU: keep {placeholders} verbatim, keep plural/select structure,
+   and escape literal angle brackets that are NOT next-intl tags
+   (a bare <root> once triggered an UNCLOSED_TAG parse error).
+```
+
+## 부적절 단어 — AI 판단이 아니라 *테스트 게이트*
+
+다국어 사이트에서 가장 무서운 클래스의 사고는 *부적절한 단어*가 페이지에 노출되는 것이다. 영어로는 멀쩡한 단어가 다른 언어로는 욕설이 되는 케이스도 있다.
+
+이걸 *AI에게 매 번역마다 검토시키는 방식*은 신뢰성이 떨어진다. on-demand 판단은 가끔 놓친다. 그래서 `docs/adr/0005-orchestrated-parts-harness.md` 에서 이렇게 결정했다.
+
+> 부적절 단어 필터링 = **테스트 게이트.** 욕설·비속어·문화 금기어는 AI 판단이 아니라 로케일별 금칙어 denylist로 `pnpm test`에서 자동 차단한다 (결정론적, 항상 켜짐). 신뢰성이 on-demand 판단보다 높다.
+
+`src/i18n/profanity.ts`에 7로케일 금칙어 리스트가 있다.
+
+```typescript
+const sharedDenylist: readonly string[] = [
+  'fuck', 'shit', 'asshole', 'bitch', 'bastard',
+  'cunt', 'slut', 'whore', 'nigger', 'faggot', 'retard',
+];
+
+const localeDenylist: Record<Locale, readonly string[]> = {
+  en: [],
+  ko: ['씨발', '개새끼', '병신', '지랄', '좆'],
+  ja: ['死ね', 'くたばれ', 'クソ野郎'],
+  'zh-Hans': ['傻逼', '他妈的', '操你', '婊子'],
+  'zh-Hant': ['傻逼', '他媽的', '操你', '婊子'],
+  fr: ['putain', 'merde', 'connard', 'salope', 'enculé'],
+  es: ['mierda', 'joder', 'cabrón', 'gilipollas', 'puta'],
+};
+```
+
+흥미로운 디테일 두 개:
+
+### 1. 라틴 스크립트는 단어 경계로 매칭
+
+`shit`이 `shiitake`(표고버섯)를 잡으면 안 된다. 그래서 `\b` (Unicode word boundary)로 매칭한다.
+
+### 2. CJK는 부분 문자열 매칭 — 그래서 *짧은 단어는 빼야 한다*
+
+한국어/일본어/중국어는 띄어쓰기가 없어서 단어 경계가 없다. 그래서 substring 매칭이다. 이게 함정인데, 짧은 욕설이 **합법적인 단어의 일부**가 될 수 있다.
+
+```typescript
+/**
+ * 제외된 이유: `시발` (→ `시발점`), `새끼` (→ legitimate "offspring"),
+ * `妈的` (→ `我妈的` "my mom's"), `ばか`/`くそ` (too embedded in ordinary text).
+ * Prefer the longer, unambiguous compound (`개새끼`, `他妈的`).
+ */
+```
+
+`시발` 만 잡으면 *시발점*(starting point)이 걸린다. 그래서 더 명확한 합성어 `개새끼`, `他妈的` 만 잡는다. 이런 결정이 코드 옆에 주석으로 박혀 있다는 게 좋다 — 나중에 이걸 잘 모르고 짧은 단어를 추가하면 빌드가 false positive로 깨진다.
+
+## 정리
+
+- 100페이지 × 7로케일 = 700개의 번역 단위. 시스템이 일을 대신해야 한다.
+- `messages/glossary.md` 가 7로케일 용어를 못 박는다. 새 번역은 이 표를 따른다.
+- 새 유틸 추가 시 `i18n-fanout` 워크플로로 6개 비영어 로케일을 *병렬* 번역. 용어를 1회 고정 → 6개 동시 번역 → 구조 정합 테스트 게이트.
+- ICU 파서가 `<root>` 같은 각괄호를 next-intl 태그로 오해할 수 있다. 메시지 파일의 텍스트는 *ICU 메시지 포맷*이다.
+- 부적절 단어 필터링은 **AI 판단이 아니라 결정론적 테스트 게이트** — `src/i18n/profanity.ts` 의 denylist를 `pnpm test`가 강제한다.
+- CJK는 단어 경계가 없어서 substring 매칭. 짧은 욕설은 합법 단어의 일부가 될 수 있으니 명확한 합성어만 잡는다.
+
+다음 편은 *7로케일에 같은 톤을 입히는* 또 하나의 시스템 — **디자인 시스템 — Pegman 의 탄생과 은퇴** 얘기다.

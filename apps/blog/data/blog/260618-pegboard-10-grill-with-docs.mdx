@@ -1,0 +1,250 @@
+---
+title: 'CONTEXT.md 와 ADR 을 살아있게 만드는 의식 — grill-with-docs 사용 후기'
+date: '2026-06-18T10:00:00'
+tags: ['pegboard', 'dev-log', 'claude-code', 'skills', 'adr', 'context-md', 'ddd']
+draft: true
+summary: 'Claude Code 스킬 중 가장 만족하는 도구가 grill-with-docs 다. "AI가 모르겠을 때 묻는" 스킬이 아니라, 결정이 굳는 순간 그 자리에서 CONTEXT.md/ADR을 박는 의식이다. 페그보드의 도메인 언어와 11개 ADR이 어떻게 이 스킬을 통과해 살아남았는지 정리.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![grill-with-docs](/static/images/coffee_machine_2.png)
+
+[9편](/blog/260617-pegboard-09-agent-setup)에서 페그보드 에이전트 설정을 정리했다. 거기 박혀 있던 14개 로컬 스킬 중에서 *내가 가장 만족하고 있는* 한 개의 후기를 쓴다 — `grill-with-docs`.
+
+## 스킬 정의
+
+스킬 정의 파일 (`.agents/skills/grill-with-docs/SKILL.md`) 의 첫 단락이 이 스킬의 전부다.
+
+> Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+>
+> Ask the questions one at a time, waiting for feedback on each question before continuing.
+>
+> If a question can be answered by exploring the codebase, explore the codebase instead.
+
+처음 봤을 땐 "그냥 질문 많이 하라는 거잖아?" 싶었다. 그런데 실제로 한 번 돌려보고 깨달았다 — *이건 AI가 모르겠을 때 묻는 스킬이 아니라, 내가 모르겠다는 걸 나에게 강제로 알려주는 스킬*이다.
+
+## "한 번에 한 질문씩, 답 기다리고"
+
+스킬에서 가장 흥미로운 제약 하나다.
+
+> **Ask the questions one at a time**, waiting for feedback on each question before continuing.
+
+여러 질문을 한꺼번에 던지면 *내가 묶어서 두루뭉술하게 답*한다. 한 질문씩 받으면 *내가 정확히 답해야* 한다. 이게 단순한 형식 차이가 아니다 — *모호한 답을 못 하게 강제하는 구조*다.
+
+```
+나쁜 흐름:
+  AI: "이 audio converter는 어떤 포맷을 지원하고, 어떤 코어를 쓸지, 광고와 호환되는 결정인지 한꺼번에 답해주세요"
+  나: "음... MP3 WAV 정도? 코어는 ffmpeg일 거고... 광고는 잘 모르겠어요"
+  → 세 개 다 안 정해짐, 다음 단계로 미뤄짐
+
+좋은 흐름 (grill-with-docs):
+  AI: "audio converter가 출력하는 포맷이 뭐죠?"
+  나: "MP3, WAV, OGG, M4A, FLAC"
+  AI: "Opus는?"
+  나: "음... 어떻게 되는지 모르겠네"
+  AI: (탐색) "@ffmpeg/core 단일스레드는 .opus 머싱에서 wasm trap을 일으킵니다. v1에서 빼는 게 어때요?"
+  나: "그렇게 가자"
+  → ADR-0009의 한 문단으로 굳어짐
+```
+
+이 차이가 **CONTEXT.md / ADR이 그날 그 자리에서 박히는** 결과를 낳는다.
+
+## 결정이 굳는 순간 = 문서가 박히는 순간
+
+스킬의 *During the session* 섹션에 핵심이 있다.
+
+> ### Update CONTEXT.md inline
+>
+> When a term is resolved, update `CONTEXT.md` right there. Don't batch these up — capture them as they happen.
+
+이게 일반적인 *결정 → 문서화* 흐름과 정반대다.
+
+```
+일반적인 흐름:
+  결정 → 구현 → (한참 뒤) "아 문서화도 해야지" → 까먹음
+  결과: 코드에는 결정이 박혀 있지만 *왜* 그렇게 했는지는 git log를 뒤져야 알 수 있음
+
+grill-with-docs 흐름:
+  질문 → 답 → 같은 turn에서 CONTEXT.md / ADR 갱신 → 다음 질문
+  결과: 결정의 *이유*가 결정 *옆에* 박혀 있음
+```
+
+## 실제 사례 1 — Audio Converter의 모호한 첫 정의
+
+[6편의 audio-converter](/blog/260614-pegboard-06-ffmpeg-wasm) 계획을 세울 때 처음에 이렇게 말했다.
+
+> "오디오 컨버터 만들자. 오디오를 변환하는 거."
+
+이게 grill 세션에 들어가면 첫 질문이 이거다.
+
+> **"Convert how?** File format transcoding (MP3→WAV) needs a 30MB WASM engine; BPM/dB *math* is a tiny text tool. Which?"
+
+내가 *오디오 변환*이라는 두루뭉술한 단어로 무엇을 의미했는지 — 두 가지 완전히 다른 도구가 가능하다.
+
+| 해석 1: 파일 포맷 트랜스코딩 | 해석 2: BPM/dB 수학             |
+| ---------------------------- | ------------------------------- |
+| MP3 → WAV                    | BPM ↔ ms                        |
+| 30 MiB WASM 엔진 필요        | 작은 텍스트 도구                |
+| `audio` 카테고리             | `calc` 카테고리                 |
+| Batch 모드 가능              | 단일 입력                       |
+
+이게 *grilling이 잡아낸 모호함*이다. 만약 grilling 없이 바로 구현에 들어갔으면 — 코드를 절반 짜고 *"어, 사용자가 BPM 변환을 기대했을 수도 있겠는데"* 라는 생각이 들었을 거다. 너무 늦다.
+
+CONTEXT.md 의 `Flagged ambiguities` 섹션에 이 결정이 박혔다.
+
+> "Audio conversion" was used to mean both **file format transcoding** and audio *math/metadata* tools (BPM↔ms, dB↔ratio). Resolved: **Audio Converter = file format transcoding only.** Audio math would be a distinct Utility, likely under `calc`.
+
+미래에 누가 "audio conversion" 이라는 모호한 표현을 다시 쓰려고 하면, 이 문장 한 줄이 *왜 이 단어를 더 정확하게 써야 하는지* 알려준다.
+
+## 실제 사례 2 — "GPT/Claude" 라고 부르지 말 것
+
+[7편의 offline-ai-chat](/blog/260615-pegboard-07-on-device-llm) 도 비슷한 사례가 있었다. 처음에 이렇게 말했다.
+
+> "온디바이스 GPT 같은 거 만들자. Gemma로."
+
+grill 세션의 답:
+
+> **"It's Gemma**, so we can't call it GPT or Claude — it's an **Offline AI Chat**: Local inference on WebGPU, prompts never leave the device. But the ~3 GB Model weights download once from the Hugging Face CDN; we can't self-host them (Cloudflare's 25 MB cap, ADR-0009), so it's not the 'nothing ever leaves' story Audio Converter has."
+
+세 가지를 한꺼번에 박았다.
+
+1. **이름** — GPT/Claude/ChatGPT 라고 부르지 말 것 (Gemma다 + 트레이드마크 리스크)
+2. **개념 분리** — *Local inference* (compute는 로컬) vs *Model weights* (3rd-party CDN)
+3. **카피 톤** — Audio Converter의 *"nothing ever leaves"* 스토리는 여기 적용 안 됨
+
+CONTEXT.md의 정의들:
+
+> **Local inference**: Generating the model's reply on the user's own GPU via WebGPU, with no server call — the differentiator from cloud chat.
+>
+> **Model weights**: The multi-GB Gemma 4 E2B file set (~3 GB at q4f16), downloaded **once from the Hugging Face CDN** (a third party) and cached in the browser. Distinct from **Local inference**: the *compute* is local, but the *weights* come from a third party.
+
+그리고 `Flagged ambiguities` 에 박힌 결정.
+
+> "On-device GPT/Claude" was used loosely for this tool. Resolved: the model is **Gemma 4 (E2B)**, surfaced as **Offline AI Chat** — never label it GPT/Claude/ChatGPT (inaccurate + trademark).
+
+이게 *미래의 자신을 위한 경고*다. 6개월 뒤에 마케팅 카피를 쓰다가 "ChatGPT 같은 거" 라고 적고 싶어질 때, 이 문장이 멈춰 세운다.
+
+## 실제 사례 3 — "Audio file" 단수 vs "Batch" 복수
+
+처음 audio-converter 정의는 *한 파일*이 입력이었다.
+
+> "an audio file"
+
+grilling 끝에:
+
+> Audio Converter was first defined as single-file ("an audio file"). **Resolved: it now transcodes a Batch (1..N files, one shared Format token); per-file conversion failures are skipped and retryable, while an engine-load failure aborts the whole Batch.**
+
+이게 단순히 "복수도 지원해요" 가 아니다. 다음 단계의 모든 결정에 영향을 미친다.
+
+- UI: 파일 1개 input → multi-file dropzone
+- 진행률: 파일별 progress + 전체 batch progress
+- 에러 처리: per-file skip / batch-level abort
+- i18n: 단수형 문구 / 복수형 문구
+- 향후 확장: PDF batch, image batch 등이 같은 *Batch* 어휘 재사용
+
+그래서 *Batch* 라는 단어가 CONTEXT.md 에 도메인 용어로 등록됐다.
+
+> **Batch**: The set of input files queued for conversion together in one run, sharing one output Format token (and bitrate). Processed sequentially — the single-threaded engine (ADR-0009) transcodes one file at a time. *A general term reusable by future multi-input Utilities.*
+
+> *Avoid*: Queue (connotes ordering/waiting, not the set itself).
+
+마지막 줄이 흥미롭다 — *"Queue"라고 부르지 마라.* Queue는 *순서·대기*의 함의가 있고, Batch는 *집합 자체*의 함의가 있다. 비슷한 단어 사이의 미묘한 차이를 박아둔다.
+
+## 실제 사례 4 — ADR-0006 → 0007 의 트랩 노트 뒤집기
+
+[5편](/blog/260613-pegboard-05-pegman-retirement)에서 다룬 가장 흥미로운 사례다.
+
+ADR-0006 (5월 30일)이 *명시적으로 거부*하면서 트랩 노트까지 박았던 옵션이 있었다.
+
+> **주의(함정):** shadcn-create로 생성한 프리셋(`oklch` 블루 `--primary`, 순백 `--background`, 쿨 그레이 neutral)은 스키마 템플릿으로만 쓴다 — 변수 이름 목록과 라이트/다크 구조만 차용하고, **값은 채택하지 않는다.** ... 생성 프리셋의 블루 primary를 그대로 붙이면 CTA가 파랑이 되어 orange=액션 규칙이 깨진다 — **하지 말 것.**
+
+그리고 다음 날 ADR-0007 (5월 31일)에서 *그 트랩을 의도적으로 넘는* 결정을 했다.
+
+> 사용자가 그 거부했던 대안을 **의도적으로 채택**하기로 결정했다.
+
+여기서 *grilling이 만드는 가치*가 또 한 번 드러난다. ADR-0007 이전에 한참 grilling을 했고, 그 결과 ADR-0007 안에 *왜 어제의 결정을 뒤집는지* + *어제의 결정이 왜 합리적이었는지* + *오늘의 결정이 어떤 비용을 받아들이는지* 가 한 문서에 다 박혔다.
+
+> **dual-accent·WCAG 문서·캐릭터 모트 상실.** ADR-0004가 차별화 근거로 든 "따뜻한 craftsman 톤 = 카테고리 모트"가 사라지고, dev-tool 표준 블루로 회귀. 사용자가 단순·일관성을 우선해 수용한 트레이드오프.
+
+그리고 같은 ADR 안에서 *세션 중* 결정이 한 번 더 바뀐 부분.
+
+> **B(완전 치환)에서 A로 변경(2026-05-31, 같은 세션):** 구현 착수 시 브랜드 색 클래스가 ~400회/48파일 + ui 컴포넌트 본체에 박혀 있어 치환 리스크·검증 부담이 컸다. 사용자가 "치환을 피하는 방법"을 물었고, "**미노출**(삭제 아님)" 표현이 A에 더 정확하다고 판단해 A로 전환.
+
+같은 ADR 안에서 *세션 중에* 결정이 한 번 더 바뀌는 흐름이 기록됐다. 이게 grilling 안에서 *내가 처음 답한 것을 다시 정의할 자유*를 갖고 있다는 신호다.
+
+## ADR을 만드는 기준 — 셋 다 충족할 때만
+
+스킬의 *Offer ADRs sparingly* 섹션이 ADR 인플레이션을 막는다.
+
+> Only offer to create an ADR when all three are true:
+>
+> 1. **Hard to reverse** — the cost of changing your mind later is meaningful
+> 2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
+> 3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
+>
+> If any of the three is missing, skip the ADR.
+
+이게 페그보드에 ADR이 *11개만* 있는 이유다. 매 결정마다 ADR을 박으면 5분기 안에 50개로 늘어난다. 그러면 누구도 ADR을 안 읽는다.
+
+세 기준을 적용해서 **ADR을 박지 않은 결정들** 도 많다.
+
+- "TailwindCSS 4 쓰기" → ADR 없음 (놀랍지 않음)
+- "next-intl 쓰기" → ADR 없음 (놀랍지 않고 reverse 쉬움)
+- "Vitest + Playwright" → ADR 없음 (테스트 스택은 흔함)
+
+반대로 ADR을 박은 결정들:
+
+| ADR      | 왜 ADR 인가                                                       |
+| -------- | ----------------------------------------------------------------- |
+| 0001     | Utility Registry SoT — 미래에 "왜 인라인 안 하지" 라고 물을 것     |
+| 0002     | 스킬 vs 서브에이전트 — 7개로 늘리지 않은 게 미래 입장에서 놀랍다  |
+| 0005     | 오케스트라+파트 하니스 — 슬래시 명령어 0개의 결정이 surprising    |
+| 0007     | Pegman 은퇴 — *명시적으로 reverse* 한 결정                        |
+| 0009     | 단일스레드 ffmpeg — *광고 호환*이라는 비-자명 제약                 |
+| 0010     | CDN 호스팅 (0009 reverse) — 25 MiB 한계라는 platform 제약         |
+| 0011     | offline-ai-chat의 viewport-locked UI — 다른 페그와의 *의도적 차이* |
+
+각 ADR이 *"이 결정이 코드 어디에도 안 나타나는데 왜 이렇게 했지?"* 라는 미래의 질문에 답한다.
+
+## ADR 자체의 포맷 — 짧아도 된다
+
+스킬의 `ADR-FORMAT.md`가 강조하는 점이 좋다.
+
+> `{1-3 sentences: what's the context, what did we decide, and why.}`
+>
+> That's it. An ADR can be a single paragraph. The value is in recording *that* a decision was made and *why* — not in filling out sections.
+
+ADR이 의례화되어 *제목, 상태, 컨텍스트, 결정, 결과, 대안, 참조* 7개 섹션을 채우는 의식이 되면 — 그 ADR은 다시 안 쓰인다. 그래서 페그보드 ADR 중 짧은 건 한 문단, 긴 건 한 페이지. *결정의 무게에 비례*한다.
+
+ADR-0001은 작아도 되는 결정이라 1페이지, ADR-0007은 *6일짜리 브랜드를 은퇴시키는* 결정이라 매핑 테이블까지 포함해 길다.
+
+## "내가 grilling을 만족하는 진짜 이유"
+
+스킬을 한 마디로 요약하면 이거다.
+
+> **결정이 굳는 순간 그 자리에서 문서가 박힌다. 6개월 뒤의 내가 같은 질문을 다시 묻지 않는다.**
+
+페그보드를 짓는 일에서 가장 자주 하는 실수가 — *"전에 이 결정을 왜 했더라"* 를 다시 추적하는 일이었다. git log를 뒤지고, 옛 PR을 읽고, 이전 채팅 로그를 뒤져도 *왜* 는 흩어져 있다.
+
+grilling은 그 흐름을 끊는다. 결정이 굳는 순간 — CONTEXT.md 한 줄, ADR 한 단락. 6개월 뒤의 나는 그걸 읽는다.
+
+> Don't batch these up — capture them as they happen.
+
+## 정리
+
+- `grill-with-docs` 는 *AI가 모르겠을 때 묻는 스킬*이 아니라 *결정이 굳는 순간 문서를 박는 의식*이다.
+- **한 번에 한 질문씩, 답 기다리고** — 묶어서 묻지 않는다. 한 질문씩 받으면 모호한 답을 못 하게 강제된다.
+- 결정이 굳으면 *같은 turn에서* CONTEXT.md / ADR을 갱신. *나중에 한꺼번에* X.
+- 실제 사례:
+  - "audio conversion" 이라는 두루뭉술한 표현 → *file format transcoding vs BPM/dB math* 분리
+  - "온디바이스 GPT" → *Gemma 라고 정확히 부르고, Local inference vs Model weights 분리*
+  - 단일 파일 → *Batch* 라는 일반 용어로 등록 (future multi-input 유틸이 재사용)
+  - ADR-0006 트랩 노트를 ADR-0007이 의도적으로 뒤집음 — 두 결정의 이유가 같은 문서 흐름에 박힘
+- **ADR 기준 셋**: Hard to reverse + Surprising without context + Real trade-off. 셋 다 충족할 때만 ADR. → 페그보드 ADR이 11개만 있는 이유.
+- ADR은 *짧아도 된다*. 한 단락도 ADR. 결정의 무게에 비례.
+- 핵심: **6개월 뒤의 내가 같은 질문을 다시 묻지 않는다.**
+
+이렇게 페그보드 시리즈 10편이 끝났다. 1편의 시스템 그림이 — 레지스트리, i18n, 디자인 시스템, 무거운 유틸 두 개, 데이터 루프, 에이전트 설정, 그리고 이 grilling 의식 — 모두 자기 자리를 찾았다. 100페이지가 아직 다 채워지지 않았지만, **시스템은 이미 100페이지 분량의 결정을 머금고 있다.** 그게 이 시리즈를 쓴 이유다.
+
+읽어줘서 고맙다.

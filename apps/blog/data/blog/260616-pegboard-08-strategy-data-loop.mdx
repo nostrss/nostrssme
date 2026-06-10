@@ -1,0 +1,192 @@
+---
+title: '광고로 먹고사는 100페이지 사이트의 데이터 루프 — GA4 + GSC → "다음에 뭘 만들지"'
+date: '2026-06-16T10:00:00'
+tags: ['pegboard', 'dev-log', 'analytics', 'ga4', 'search-console', 'strategy', 'seo']
+draft: true
+summary: '100개의 유틸 페이지를 양산할 거라면 "다음에 뭘 만들지"를 감으로 결정하지 않는다. GA4 + Search Console 자격증명 + 스냅샷 파일 + 전략 스킬로 데이터에서 우선순위가 나오는 루프를 짰다. ADR-0005가 "데이터 없으면 전략은 환각기"라고 적은 이유.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![GA4 + GSC data loop](/static/images/coffee_machine_2.png)
+
+[1편](/blog/260609-pegboard-01-start)부터 페그보드의 목표가 *~100개의 유틸리티 페이지*라고 말했다. 그런데 한 가지 질문이 비어 있다.
+
+> 100개를 어떻게 고를 건데?
+
+이번 편이 그 답이다.
+
+## 감으로 100개를 고르면 어떻게 되나
+
+처음 ~20개는 감으로 만들었다. base64, JSON formatter, 타임존 변환기, 단위 변환, 색상 변환기 ... 잘 알려진 유틸들이다. 이 정도는 *"분명히 누가 찾을 거다"* 라는 확신이 있다.
+
+그런데 21번째부터가 애매하다. JSON repair? JWT decoder? Markdown → HTML? Image color picker? 다 그럴듯해 보이는데 — *어떤 게 실제로 트래픽을 가져올지 모른다.*
+
+이걸 감으로 고르면:
+
+- 만들었는데 검색 트래픽이 안 들어옴 → 광고 수익 0 → 운영비는 거의 0이지만 *내 시간*은 0이 아님
+- 비슷한 유틸 5개를 만들었는데 정작 검색량 큰 카테고리는 비어 있음 → 기회비용
+- "이런 거 만들면 좋겠다"는 직관 vs *실제로 사람이 검색하는 것* 사이의 간극
+
+광고로 굴리는 사이트에서 *트래픽이 안 오는 페이지는 비용*이다. 100페이지를 그냥 채워서는 안 된다.
+
+## 결정 — 데이터 위에서 결정한다
+
+`docs/adr/0005-orchestrated-parts-harness.md` 에서 *전략(Strategy)* 파트를 어떻게 만들지 결정할 때 가장 먼저 박은 줄이 이거였다.
+
+> **데이터 소스 선행 원칙**(ADR-0001의 "registry 없으면 Curator는 환각기")을 그대로 적용한다 — 전략도 데이터 없이는 환각이다.
+
+[3편의 Curator](/blog/260611-pegboard-03-utility-registry)가 *레지스트리 없으면 환각기*였던 것과 동일한 패턴이다. 머리(전략 스킬)는 *데이터(스냅샷 파일)* 위에서만 의미가 있다.
+
+## 데이터 파이프라인
+
+```
+Google Analytics 4 (GA4)              ← 실제 페이지 행동
+Google Search Console (GSC)           ← 검색 노출 + 위치
+        │
+        │ Service Account 자격증명
+        ▼
+scripts/analytics/fetch.ts            ← Node 스크립트 (배포 번들 X)
+        │
+        ▼
+data/analytics/snapshot.json          ← 스냅샷 파일 (gitignored)
+        │
+        ▼
+strategy 스킬 (.agents/skills/strategy/SKILL.md)
+        │
+        ├── 그린필드 우선순위 (GSC 기반)
+        └── 개선점 분석 (GA4 기반)
+```
+
+핵심 디자인 결정 몇 가지.
+
+### 1. 정적 export 와 충돌 안 한다
+
+페그보드는 정적 export 모드라 *런타임 서버가 없다*. 그래서 GA4 API 호출을 *빌드 시점에* 한다. `scripts/analytics/fetch.ts` 는 *dev/CI 시점*에만 도는 Node 스크립트다. 배포 번들에는 안 들어간다. 자격증명은 `.env`에 두고 `.gitignore`로 차단.
+
+이건 [2편의 정적 export 함정](/blog/260610-pegboard-02-static-export-trap)의 또 다른 면이다 — *클라이언트에 들어가지 않게* 잘 격리하면, Node-only API도 dev/CI에서 자유롭게 쓸 수 있다.
+
+### 2. 스킬은 *파일*을 읽고, *API*를 직접 호출하지 않는다
+
+전략 스킬은 매번 GA4/GSC API를 호출하지 않는다. `data/analytics/snapshot.json` 한 파일만 읽는다. 이게 신뢰성 면에서 두 가지를 보장한다.
+
+- **재현 가능**: 같은 스냅샷 위에서는 같은 추천. 어제 한 추천을 오늘 다시 받을 수 있다.
+- **자격증명 의존성 없음**: 매 호출마다 OAuth/Service Account를 거치지 않는다.
+
+스냅샷은 사용자가 `pnpm analytics:fetch` 로 갱신한다 — 보통 ~30일 한 번. 그보다 오래된 스냅샷이라면 스킬이 *그 사실 자체를 보고*한다.
+
+> Check `generatedAt` — if it's older than ~30 days, say so and recommend re-running `pnpm analytics:fetch` before trusting the numbers.
+
+### 3. 자격증명 셋업은 사용자 책임 (자동화 불가)
+
+ADR-0005:
+
+> **외부 선행 조건(운영자 수동):** GCP 서비스 계정 생성 + GA4/GSC 속성 접근 권한 부여. 에이전트가 대신 못 하는 단계.
+
+이걸 솔직하게 적어두는 게 중요했다. 에이전트가 자동으로 할 수 없는 단계가 있다는 걸 명시해야 *이 파이프라인이 작동하려면 무엇이 선행되어야 하는지*가 명확해진다.
+
+## 두 가지 질문 — 그린필드 vs 개선
+
+전략 스킬이 답하는 질문은 정확히 두 개다.
+
+### 질문 1 — 그린필드: "다음에 뭘 만들지"
+
+**주요 신호: Search Console** (`snapshot.gsc`).
+
+GA4는 *없는 페이지를 못 본다.* 새 페이지를 만들지 결정하려면 *이미 검색 노출이 일어나는데 우리 페이지가 약한 경우*를 찾아야 한다.
+
+```
+높은 impressions + 약한 position (8~20) + registry.ts 에 없는 유틸
+                                ↓
+                       "이미 검색은 들어오는데 우리 페이지가 미흡"
+                                ↓
+                       만들기만 하면 즉시 트래픽 향상
+```
+
+이게 *가장 싼 트래픽*이다. 검색 의도는 이미 확인됨, 광고 위치도 알려짐, 만들기만 하면 된다.
+
+### 질문 2 — 개선: "기존 페이지 뭘 고치지"
+
+**주요 신호: GA4** (`snapshot.ga4.pages`) + GSC 페이지 행.
+
+```
+높은 views + 높은 bounceRate / 낮은 engagementRate
+        → UX 또는 콘텐츠/검색의도 미스매치
+        → make-interfaces-feel-better 또는 콘텐츠 리뷰
+
+높은 GSC impressions + 낮은 ctr
+        → 타이틀/메타 문제
+        → seo-audit 스킬
+
+괜찮은 position + 약한 engagement
+        → 내부 링크 / 깊이 부족
+        → pegboard-curator 로 내부 링크 배치
+```
+
+이게 좋은 부분이다 — *문제를 진단했으면 어디로 보내야 할지*까지 결정해준다. 각 패턴이 페그보드의 다른 스킬·서브에이전트로 라우팅된다. ([9편의 디스패치 매트릭스](/blog/260617-pegboard-09-agent-setup)에서 자세히)
+
+## 출력 포맷 — 결정 자료, 액션 아님
+
+전략 스킬의 출력은 *고정 포맷*이다.
+
+```
+## Conclusion
+<한 단락: 추천하는 다음 1~3 액션>
+
+## Data basis
+<스냅샷 generatedAt + 날짜 범위; stale 여부>
+
+## Build next (greenfield, GSC-led)
+1. <utility> — <impressions>/imp, pos <n>, query "<q>" → 이유
+   ...
+
+## Improve now (existing pages, GA4-led)
+- <path>: <메트릭 문제> → <어떤 스킬/파트로 라우팅>
+
+## Risks / caveats
+<low-data 페이지, 샘플링, 계절성, 누락 로케일>
+```
+
+이게 [3편의 Curator 출력 포맷](/blog/260611-pegboard-03-utility-registry)과 같은 사상이다 — **메인 에이전트가 결정을 추출하기 쉽게** 구조화된 텍스트.
+
+그리고 SKILL.md 끝의 한 줄.
+
+> You produce **decision material**, not edits. Building a utility still goes through the normal dispatch (Curator placement → seo-audit, tdd, make-interfaces-feel-better, i18n-localization).
+
+전략 스킬이 *유틸을 만들지 않는다.* 유틸 생성은 여전히 *Curator → seo-audit → tdd → make-interfaces-feel-better → i18n-localization* 의 일반 디스패치를 거친다. 전략 스킬은 **무엇을** 만들지 알려줄 뿐, **어떻게**는 시스템의 다른 부분이 책임진다.
+
+## 함정 — 두 신호를 섞지 말 것
+
+SKILL.md의 *Boundaries* 섹션에 흥미로운 한 줄이 있다.
+
+> Never present GA4 numbers as demand for unbuilt pages, or GSC position as engagement. Keep the two questions' signals distinct.
+
+GA4의 *views*는 이미 *만들어진 페이지의 트래픽*이다. 안 만든 페이지에는 GA4 데이터가 없다. 그러니 GA4를 "수요" 신호로 쓰는 순간 *이미 잘 되는 페이지만 더 잘 만들기로 추천*되는 편향이 생긴다.
+
+GSC의 *position*은 *현재 우리가 보이는 순위*다. 검색 *몇 번째*에서 사용자가 보냐를 말할 뿐, *우리 페이지에 들어와서 얼마나 머물렀는지*는 모른다. 그러니 position을 "engagement" 신호로 쓰면 안 된다.
+
+이 두 신호를 분리하는 *규율*이 데이터 기반 결정의 핵심이다. 이게 *데이터 분석가가 머리로 아는 것*인데, 스킬 정의에 박아두면 에이전트가 매번 잊지 않고 적용한다.
+
+## ADR-0001/0002/0005의 같은 패턴
+
+ADR을 시계열로 따라가면 같은 추상이 반복된다.
+
+| ADR      | 데이터 SoT                              | 그 위에서 도는 머리       | 데이터 없으면              |
+| -------- | --------------------------------------- | ------------------------- | -------------------------- |
+| ADR-0001 | `src/utilities/registry.ts`             | Curator 서브에이전트      | Curator는 환각기           |
+| ADR-0002 | (위와 같은 레지스트리 + glossary + ADR) | Curator의 read-only 동작  | "환각 없는 시스템 지도" X  |
+| ADR-0005 | `data/analytics/snapshot.json`          | 전략 스킬                 | 전략 추천은 환각           |
+
+이게 페그보드 전체를 관통하는 패턴이다. **머리(에이전트/스킬)는 데이터(파일) 위에서만 의미가 있다.** 데이터가 stale 하거나 없으면 머리는 환각으로 변한다 — 그래서 머리가 데이터의 *generatedAt*을 항상 먼저 확인하고, 미흡하면 *그 사실을 보고*한다.
+
+## 정리
+
+- 100페이지를 감으로 채우면 *트래픽 안 오는 페이지 = 비용*. 광고 수익 모델은 이걸 용납하지 않는다.
+- **데이터 위에서 결정한다** — GA4(행동) + GSC(검색 노출) → `data/analytics/snapshot.json` → `strategy` 스킬.
+- 정적 export 모드와 충돌 없음 — fetch 스크립트는 dev/CI 시점에만 돌고, 배포 번들에 안 들어간다.
+- 스킬은 *파일*을 읽지 *API*를 직접 호출하지 않음. 재현 가능 + 자격증명 의존성 없음. 스냅샷이 30일 넘으면 *그 사실 자체를 보고.*
+- **두 가지 질문 분리**: 그린필드(GSC, "다음에 뭘") vs 개선(GA4, "기존 페이지 뭘"). 두 신호를 섞지 않는다 — GA4는 만든 페이지만 보고, GSC position은 engagement가 아니다.
+- 전략 스킬은 *결정 자료*만 생성, 유틸 생성은 일반 디스패치를 거친다. **무엇**과 **어떻게**의 분리.
+- 페그보드 전체를 관통하는 패턴: **데이터(SoT) + 머리(스킬/에이전트)**. 데이터 없으면 머리는 환각.
+
+다음 편부터는 이 시스템 전체를 *어떻게 굴리는지* — **에이전트 설정 정리** 와 **grill-with-docs 후기** 라는 메타 두 편으로 시리즈를 마무리한다.
