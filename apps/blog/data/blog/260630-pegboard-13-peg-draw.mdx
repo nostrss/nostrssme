@@ -1,0 +1,243 @@
+---
+title: '브라우저 전용 라이브러리를 정적 사이트에 심기 — Excalidraw 로 PegDraw 를 짜기'
+date: '2026-06-30T10:00:00'
+tags: ['pegboard', 'dev-log', 'excalidraw', 'indexeddb', 'static-export', 'nextjs']
+draft: false
+summary: 'Excalidraw 기반 화이트보드 PegDraw 를 정적 export 페그보드에 심은 이야기. SSR 끄고 lazy-load 하는 건 시작일 뿐이고, 진짜 디테일은 모듈 스코프의 비대칭(asset path는 되는데 IndexedDB는 안 되는 이유), localStorage 대신 IndexedDB 를 고른 이유, 그리고 순수 코덱과 I/O 스토리지를 갈라놓은 구조에 있었다.'
+images:
+  - '/static/images/coffee_machine_2.png'
+---
+
+![PegDraw — Excalidraw on a static site](/static/images/coffee_machine_2.png)
+
+[10편](/blog/260618-pegboard-10-grill-with-docs)까지 시스템·에이전트·문서 쪽 얘기를 했으니, 이번 편은 다시 *유틸 한 개를 짜는* 얘기로 돌아온다. [PegDraw](https://pegboard.me/en/peg-draw/) — 브라우저 안에서 도는 화이트보드/드로잉 도구다.
+
+PegDraw는 [Excalidraw](https://github.com/excalidraw/excalidraw)를 감싼다. 무한 캔버스에 도형·화살표·텍스트를 그리고, PNG·SVG·`.excalidraw`로 내보낼 수 있다. 그림은 사용자 브라우저를 절대 떠나지 않는다 — 서버 저장도, 계정도 없다.
+
+흥미로운 건 *Excalidraw를 쓴 것 자체*가 아니라, **클라이언트 전용 라이브러리를 `output: 'export'` 정적 사이트에 심을 때 생기는 마찰**이다. [6편](/blog/260614-pegboard-06-ffmpeg-wasm)·[7편](/blog/260615-pegboard-07-on-device-llm)이 *무거운 wasm/모델*과 광고의 충돌이었다면, 이번 건 더 미묘하다. Excalidraw는 무겁지도 않고 광고를 깨지도 않는다. 대신 *언제 어디서 평가되는가*가 전부다.
+
+## 시작점 — Excalidraw 는 브라우저 전용이다
+
+Excalidraw는 `window`·`document`·`canvas`에 의존하는 순수 클라이언트 라이브러리다. SSR/정적 export 패스(Node 환경)에서 평가되면 즉시 죽는다. 그래서 가장 바깥의 마운트는 교과서적이다 — `next/dynamic` + `ssr: false`.
+
+```tsx
+// peg-draw-tool.tsx
+const ExcalidrawWrapper = dynamic(
+  async () => (await import('./excalidraw-wrapper')).default,
+  {
+    ssr: false,
+    loading: () => (
+      <div className="text-ink-muted grid h-[calc(100svh-4rem)] w-full place-items-center text-sm">
+        Loading canvas…
+      </div>
+    ),
+  },
+);
+```
+
+핵심은 *실제 Excalidraw 마운트를 별도 파일(`excalidraw-wrapper.tsx`)로 격리*했다는 점이다. 부모(`peg-draw-tool.tsx`)는 그 파일을 `ssr:false` 로만 불러온다. 덕분에 wrapper 안의 코드는 *서버에서 절대 평가되지 않는다는 보장*을 얻는다. 이 보장이 다음 섹션의 모든 결정을 떠받친다.
+
+레이아웃은 PegKanban과 같은 full-height 패턴이다. `h-[calc(100svh-4rem)]` — 4rem 글로벌 헤더 아래 콘텐츠 칼럼을 채운다. Excalidraw를 *뷰포트에 고정하지 않는다.* 헤더와 사이드바는 그대로 보인다.
+
+## 모듈 스코프의 비대칭 — 되는 것과 안 되는 것
+
+여기가 이번 편에서 가장 좋아하는 디테일이다. wrapper 파일 안에는 *모듈 스코프에서 `window`를 만지는 코드*가 하나 있다.
+
+```ts
+// excalidraw-wrapper.tsx (모듈 스코프)
+if (typeof window !== 'undefined') {
+  window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/';
+}
+```
+
+Excalidraw는 씬에 쓰인 폰트를 lazy-load 하는데, 기본값은 `esm.sh` CDN fallback이다. 이걸 same-origin `/excalidraw-assets/` 로 돌려서, 폰트도 우리 도메인에서 서빙한다 (3rd-party 의존성 제거 + 프라이버시). 이 자산은 `scripts/copy-excalidraw-assets.mjs` 가 빌드 때 `public/` 으로 복사해 둔다.
+
+주석이 *왜 이게 모듈 스코프에서 안전한지*를 정확히 적어 뒀다.
+
+> Safe at module scope: this file is only ever imported via `next/dynamic({ ssr:false })`, so `window` always exists when it evaluates.
+
+그런데 — 같은 wrapper가 import하는 `scene-storage.ts` 는 *정반대 규율*을 따른다. 거기선 `indexedDB` 접근이 **단 한 줄도 모듈 스코프에 없다.** 전부 함수 안이다.
+
+왜 한쪽(`EXCALIDRAW_ASSET_PATH`)은 모듈 스코프에서 `window`를 만져도 되고, 다른 쪽(`indexedDB`)은 안 될까? 답은 *그 모듈이 어떻게 import되는지에 달려 있다.*
+
+- `excalidraw-wrapper.tsx` 는 **오직** `ssr:false` dynamic으로만 import된다 → 서버에서 절대 평가 안 됨 → 모듈 스코프 `window` 안전.
+- `scene-storage.ts` 는 그 wrapper가 import하지만, *순수 유닛 테스트(Node)에서도 import될 수 있는 모듈*이다. 그리고 정적 export의 module-evaluation은 놀랄 만큼 잡아내기 어려운 실패를 만든다.
+
+스토리지 모듈 헤더가 이 규율을 못 박았다.
+
+> A module-scope `indexedDB.open(...)` would be evaluated during the static export / SSR pass (where `indexedDB` is undefined) and blank the page — the same failure class AGENTS.md warns about.
+
+[AGENTS.md](/blog/260609-pegboard-01-start)가 경고하는 그 실패 클래스 — *"Node-env 유닛 테스트는 통과하는데 브라우저에서 빈 페이지로 죽는"* 것 — 와 정확히 같은 종류다. 한쪽은 import 경로의 보장을 *활용*하고, 다른 쪽은 그 보장을 *가정하지 않고* 방어적으로 함수 안에 가둔다. 같은 파일 묶음 안에서 두 전략이 공존하는 게 처음엔 일관성 없어 보이지만, 각 모듈의 *평가 시점*을 따라가면 둘 다 맞다.
+
+## 저장은 localStorage 가 아니라 IndexedDB 다
+
+PegDraw 같은 앱형 페그의 핵심은 *영속화*다. ADR-0012의 "앱형" 자격 기준 첫 줄이 *"사용자 데이터를 보존하고"* 다. 그림을 그리다 탭을 닫아도, 다시 열면 그대로 있어야 한다.
+
+기대했던 건 localStorage였는데, 코드를 열어 보니 **IndexedDB**였다. `pegdraw` 라는 DB에 `kv` object store 하나, 키는 `scene` 과 `library` 둘.
+
+```ts
+// scene-storage.ts
+const DB_NAME = 'pegdraw';
+const DB_VERSION = 1;
+const STORE = 'kv';
+const SCENE_KEY = 'scene';
+const LIBRARY_KEY = 'library';
+```
+
+코드에 IndexedDB를 고른 *이유*가 명시돼 있진 않다 (PegDraw 전용 스토리지 ADR은 없다). 다만 무엇을 저장하는지 보면 추론이 선다 — Excalidraw 씬은 `elements` 뿐 아니라 **`files` (캔버스에 끌어다 놓은 이미지의 base64 데이터)** 와 라이브러리 아이템까지 품는다. 이미지 몇 장만 붙여도 localStorage의 좁은 동기 문자열 쿼터로는 금방 빠듯해진다. 라이브러리 아이템은 구조화된 배열 그대로 structured-clone으로 넣어야 하는데, 이것도 문자열 직렬화가 강제되는 localStorage보다 IndexedDB가 자연스럽다. *(이 인과는 내 추론이다 — 코드는 "IndexedDB를 쓴다"까지만 말하고 쿼터 수치를 못 박지 않는다.)*
+
+영속화는 철저히 **best-effort** 다. 모든 읽기·쓰기가 try/catch로 감싸여 있고, 실패하면 조용히 삼킨다.
+
+```ts
+export async function saveScene(elements, appState, files): Promise<void> {
+  try {
+    await idbSet(SCENE_KEY, serializeAsJSON(elements, appState, files, 'local'));
+  } catch {
+    // Persistence is best-effort; a failed write must not break the canvas.
+  }
+}
+```
+
+읽기도 마찬가지다 — 저장된 게 없거나 읽기에 실패하면 `null`을 돌려주고, 그건 곧 "빈 캔버스"로 우아하게 떨어진다. *저장 실패가 그리기를 멈추게 해선 안 된다.* 영속화는 부가 기능이지 핵심 경로가 아니라는 태도다.
+
+## "코덱"은 압축기가 아니다 — 순수 로직과 I/O 의 분리
+
+처음에 `scene-codec.ts` 라는 이름을 보고 *씬을 압축하거나 URL로 공유 가능하게 인코딩하는 모듈*을 기대했다. 코드를 읽으니 아니었다. 압축도, base64도, URL 인코딩도, 공유 기능도 없다. 직렬화 자체는 Excalidraw가 주는 `serializeAsJSON` 이 *평범한 JSON 문자열* 로 처리하고, 그게 그대로 IndexedDB에 들어간다.
+
+그럼 `scene-codec.ts` 는 뭐냐 — *진짜로 흥미로운 건 이 분리 그 자체*다. 모듈 헤더가 존재 이유를 정확히 말한다.
+
+> Kept free of `@excalidraw/excalidraw` and any `window`/`indexedDB` access so it is browser-safe under static export AND unit-testable in Node (jsdom has no IndexedDB). The IDB I/O and Excalidraw-dependent serialization live in `scene-storage.ts`; this module only parses/validates the stored payload and builds the first-visit seed skeleton.
+
+즉 코드베이스가 둘로 갈라져 있다.
+
+| 모듈              | 역할                                  | 의존성                       | 테스트                  |
+| ----------------- | ------------------------------------- | ---------------------------- | ----------------------- |
+| `scene-codec.ts`  | 파싱·검증·시드 빌드 (순수 로직)       | **없음** (package-free)      | Node 유닛 테스트 가능   |
+| `scene-storage.ts`| IndexedDB I/O + `serializeAsJSON`     | `@excalidraw/excalidraw`, IDB | 브라우저에서만          |
+
+이건 [AGENTS.md의 개발 흐름 규칙](/blog/260617-pegboard-09-agent-setup) — *"순수 로직과 I/O를 분리한다. 테스트하기 쉬운 구조가 곧 좋은 구조다"* — 이 코드 한 쌍으로 실현된 모습이다. `jsdom`에는 IndexedDB가 없으니, 만약 파싱 로직이 스토리지에 섞여 있었다면 핵심 검증 로직을 Node에서 테스트할 길이 막힌다. 그래서 *깨지기 쉬운 부분(파싱/검증)을 일부러 I/O 없는 순수 모듈로 떼어 냈다.*
+
+코덱이 실제로 하는 방어가 무엇인지도 작지만 좋은 디테일이다. `parseScene` 은 *깨진 저장 데이터를 크래시가 아니라 "빈 캔버스"로 강등*한다.
+
+```ts
+// scene-codec.ts — 손상된 입력은 null로, 크래시 X
+export function parseScene(raw: string | null | undefined): ParsedScene | null {
+  if (!raw) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;       // 깨진 JSON → 빈 캔버스
+  }
+  if (!data || typeof data !== 'object') return null;
+  const obj = data as Record<string, unknown>;
+  if (!Array.isArray(obj.elements)) return null;  // 구조 검증
+  // ...
+}
+```
+
+`scene-storage.ts` 의 `loadSceneRaw` 도 실패 시 `null`, `parseScene` 도 손상 시 `null`, `isEmptyScene(null)` 은 `true`. 모든 실패 경로가 *같은 "빈 캔버스" 종착지* 로 수렴한다. 사용자가 보는 최악은 "내 그림이 안 보인다" 지, "페이지가 죽었다" 가 아니다.
+
+## 매 스트로크마다 저장하지 않기 — 버전 + 디바운스
+
+Excalidraw의 `onChange` 는 *살벌하게 자주* 불린다. 마우스를 움직이는 동안, 선택만 바꿔도, appState의 사소한 변화에도 발화한다. 그대로 IndexedDB 쓰기에 연결하면 초당 수십 번 직렬화·트랜잭션이 돈다.
+
+두 겹으로 막았다.
+
+```ts
+const handleChange = useCallback((elements, appState, files) => {
+  const version = getSceneVersion(elements);
+  if (version === lastVersion.current) return;   // (1) no-op이면 즉시 반환
+  lastVersion.current = version;
+  if (saveTimer.current) clearTimeout(saveTimer.current);
+  saveTimer.current = setTimeout(() => {          // (2) 600ms 디바운스
+    void saveScene(elements, appState, files);
+  }, SAVE_DEBOUNCE_MS);
+}, []);
+```
+
+1. **`getSceneVersion`** — Excalidraw가 제공하는 씬 버전. *요소가 실제로 바뀌었을 때만* 증가한다. 선택·호버처럼 그림 내용이 안 바뀐 onChange는 버전이 그대로라 여기서 바로 걸러진다.
+2. **600ms 디바운스** — 연속 편집 중에는 타이머를 계속 리셋하고, 멈춘 뒤 600ms가 지나야 한 번 쓴다.
+
+순수 로직과 I/O 분리 원칙이 여기서도 보인다 — "바뀌었나?" 판단(`getSceneVersion` 비교)은 싸고 잦게, 실제 쓰기는 드물게.
+
+## 테마·로케일을 Excalidraw 에 흘려보내기
+
+페그보드에는 이미 클래스 기반 다크 모드(ADR-0006 계열)가 있다. Excalidraw에는 자체 `theme` prop이 있다. 둘을 잇되, *React state 밖에서 토글되는 DOM 클래스를* 구독해야 한다. `useSyncExternalStore` 가 정확히 이 일을 위한 훅이다.
+
+```ts
+function subscribeTheme(callback: () => void) {
+  window.addEventListener('pegboard-themechange', callback);
+  return () => window.removeEventListener('pegboard-themechange', callback);
+}
+function isDarkSnapshot() {
+  return document.documentElement.classList.contains('dark');
+}
+// ...
+const isDark = useSyncExternalStore(subscribeTheme, isDarkSnapshot, () => false);
+```
+
+세 번째 인자 `() => false` 가 SSR 스냅샷이다 — 어차피 이 컴포넌트는 `ssr:false` 라 서버에서 안 도는데도 안전한 기본값을 둔다. 페그보드의 테마 토글이 `pegboard-themechange` 이벤트를 쏘면, Excalidraw 캔버스도 같이 다크/라이트로 따라온다.
+
+로케일도 비슷하게 다리를 놓는다. 페그보드의 7개 라우팅 로케일을 Excalidraw가 실제로 ship하는 로케일 코드로 매핑한다.
+
+```ts
+const LANG_CODE: Record<string, string> = {
+  en: 'en', ko: 'ko-KR', ja: 'ja-JP',
+  'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW', fr: 'fr-FR', es: 'es-ES',
+};
+// langCode={LANG_CODE[locale] ?? 'en'}
+```
+
+우리 쪽 로케일 토큰(`zh-Hans`)과 Excalidraw 쪽 토큰(`zh-CN`)이 다르니, 이 작은 매핑 테이블이 둘 사이의 어댑터다. 매칭이 없으면 `en`으로 폴백.
+
+## 빈 캔버스를 환영 화면으로 — in-place 시딩
+
+앱형 페그는 표준 유틸 페이지 골격(`UtilityHero` + `learn` 본문)을 *쓰지 않는다.* [7편](/blog/260615-pegboard-07-on-device-llm)에서 offline-ai-chat이 그 예외의 첫 사례였고, PegDraw도 같은 ADR-0012 혈통이다. 페이지의 유일한 SEO 헤딩은 화면에 안 보이는 `sr-only` H1 하나뿐이고, 나머지는 전부 캔버스다.
+
+```tsx
+// page.tsx — Peg Apps 예외: hero/learn 본문 없음
+<PageShell utilitySlug="peg-draw">
+  <h1 className="sr-only">{t('srHeading')}</h1>
+  <PegDrawTool />
+</PageShell>
+```
+
+문제는 *온보딩*이다. hero도 설명 블록도 없는데, 처음 들어온 사용자는 빈 캔버스만 본다. ADR-0012의 답은 **in-place 시딩** — 본문 카피 대신, *도구 자체에 첫 방문용 샘플을 미리 심는다.* 진짜 편집 가능한 노드들이고, 저장소가 비어 있을 때만 보이며, 저장된 데이터를 절대 덮어쓰지 않는다.
+
+```ts
+const scene = parseScene(raw);
+if (isEmptyScene(scene)) {
+  return {
+    elements: convertToExcalidrawElements(buildSeedSkeleton(t('seedText'))),
+    appState: { viewBackgroundColor: '#ffffff' },
+    scrollToContent: true,
+    libraryItems,
+  };
+}
+// 저장된 씬이 있으면 그대로 복원 — 시드는 건드리지 않음
+```
+
+`buildSeedSkeleton` 은 환영 텍스트 + 둥근 사각형 + 화살표 + 타원, 네 개의 *실제 도형*을 만든다. 사용자는 이걸 지우고 그리거나, 그대로 끌어다 만져 보며 도구를 익힐 수 있다. 환영 문구(`seedText`)는 i18n에서 오므로 로케일별로 번역돼 들어간다.
+
+여기 작은 함정이 하나 있었다. 환영 문구는 로케일마다 길이가 천차만별인데, 한 텍스트 요소가 너무 길면 뷰포트 밖으로 삐져나간다. 그래서 코덱에 `wrapText` 라는 순수 함수가 있다 — 공백에서 끊고, 공백 없는 CJK 문장은 글자 단위로 hard-break해서 ~20자 폭으로 소프트 랩한다.
+
+```ts
+// scene-codec.ts — 시드 텍스트를 로케일 불문 뷰포트 안에 가둠
+export function wrapText(text: string, maxChars = 20): string { /* ... */ }
+```
+
+시드를 *바운드 컨테이너 라벨*이 아니라 *독립 텍스트 노드*로 둔 것도 의도다 — 주석에 따르면 컨테이너 라벨은 텍스트가 박스를 넘치면 잘리기 때문이다. "로케일마다 길이가 다른 카피"라는 다국어 사이트의 현실이, 시드 한 조각의 모양까지 끌고 다닌다.
+
+## 정리
+
+- PegDraw는 Excalidraw를 감싼 브라우저 전용 화이트보드. 그림은 디바이스를 안 떠나고, 정적 export 사이트에 심었다.
+- Excalidraw는 클라이언트 전용 → `next/dynamic({ ssr:false })` 로 lazy-load. 실제 마운트를 별도 wrapper로 격리해 *서버에서 절대 평가 안 됨* 보장을 얻는다.
+- **모듈 스코프의 비대칭**: `EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/'` 는 모듈 스코프에서 `window`를 만져도 안전(오직 `ssr:false`로만 import되니까). 반면 `indexedDB` 는 *전부 함수 안*에 가둔다 — 모듈 스코프 `indexedDB.open` 은 정적 export 패스에서 빈 페이지로 죽는, AGENTS.md가 경고하는 그 실패 클래스.
+- 영속화는 localStorage가 **아니라 IndexedDB** (`pegdraw`/`kv`, 키 `scene`·`library`). 씬이 이미지 base64(`files`)·라이브러리 배열까지 품기 때문으로 추론 *(코드는 쿼터 이유를 명시하진 않음)*. 모든 I/O는 best-effort try/catch — 저장 실패가 캔버스를 깨지 않는다.
+- `scene-codec.ts` 는 압축기/공유 인코더가 **아니다.** 직렬화는 그냥 `serializeAsJSON` JSON. 코덱은 *순수·package-free 파싱/검증 + 시드 빌더* 로, `scene-storage.ts`(IDB I/O)와 갈라 둔 것 — Node에서 유닛 테스트 가능하게 하려는 *순수 로직/I/O 분리*. 모든 실패 경로가 "빈 캔버스"로 수렴.
+- 저장은 `getSceneVersion` 으로 no-op을 걸러내고 600ms 디바운스로 묶는다. Excalidraw `onChange`가 너무 자주 불리니까.
+- 테마는 `useSyncExternalStore` 로 `pegboard-themechange` + `.dark` 클래스를 구독해 Excalidraw `theme`에 연결. 로케일은 7개 라우팅 토큰 → Excalidraw 로케일 코드 매핑.
+- 앱형 페그라 hero/learn 없음(ADR-0012, 7편과 같은 혈통). 온보딩은 **in-place 시딩** — 저장소가 비었을 때만 진짜 편집 가능한 샘플 도형을 심는다. 로케일별 길이 차이는 `wrapText` 순수 함수가 흡수.
+
+무거운 wasm도, 광고 충돌도 없는 "가벼운" 통합이었는데, 결국 가장 많은 줄을 쓴 건 *코드가 언제 어디서 평가되는지* 였다. 정적 export에서 클라이언트 전용 라이브러리를 다룬다는 건, 라이브러리를 붙이는 일이 아니라 *평가 경계를 설계하는 일* 이라는 걸 다시 확인했다.
