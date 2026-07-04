@@ -5,10 +5,12 @@ tags: ['pegboard', 'dev-log', 'webgpu', 'llm', 'gemma', 'on-device-ai']
 draft: true
 summary: '브라우저 안에서 Gemma 4 (2B) 를 WebGPU로 굴리는 온디바이스 채팅을 짰다. 멀티스레드 WASM은 광고를 깨고 셀프 호스팅은 25 MiB 한계에 막혔다. WebGPU + Hugging Face CDN + Worker 격리 + 토큰 버짓 트리밍으로 정리하면서, 이전 ADR 하나가 *카테고리 한정으로* 뒤집혔다.'
 images:
-  - '/static/images/ai.png'
+  - '/static/images/pegman01.png'
 ---
 
-![offline ai chat](/static/images/ai.png)
+[![Pegman brand retirement](/static/images/pegman01.png)](https://pegboard.me)
+
+> [pegboard.me](https://pegboard.me)
 
 [6편](/blog/260614-pegboard-06-ffmpeg-wasm)의 audio-converter가 페그보드에서 처음으로 무거운 유틸이었다면, 이번 편의 [offline-ai-chat](https://pegboard.me/en/offline-ai-chat/)는 *두 번째로 무거운* — 그리고 더 무거운 — 유틸이다.
 

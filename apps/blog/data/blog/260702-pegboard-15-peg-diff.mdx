@@ -5,10 +5,12 @@ tags: ['pegboard', 'dev-log', 'monaco', 'diff', 'react', 'localstorage']
 draft: false
 summary: '두 텍스트를 비교하는 PegDiff 를 짰다. 핵심은 diff 알고리즘을 한 줄도 안 짰다는 것 — diff·diff-match-patch 같은 라이브러리도 안 썼다. 비교 자체는 Monaco 의 DiffEditor 에 통째로 위임하고, 내가 짠 코드는 전부 diff *바깥*에 있다: 청크 네비게이션, 추가/삭제 통계, localStorage 영속, 그리고 Monaco 위젯을 깔끔하게 떼어내는 두 개의 war story.'
 images:
-  - '/static/images/coffee_machine_2.png'
+  - '/static/images/pegman01.png'
 ---
 
-![PegDiff in browser](/static/images/coffee_machine_2.png)
+[![Pegman brand retirement](/static/images/pegman01.png)](https://pegboard.me)
+
+> [pegboard.me](https://pegboard.me)
 
 [6편](/blog/260614-pegboard-06-ffmpeg-wasm)·[7편](/blog/260615-pegboard-07-on-device-llm)에서 *무거운 유틸* — 브라우저 안의 ffmpeg, 온디바이스 LLM — 을 다뤘다. 이번엔 결이 다른 도구다. [PegDiff](https://pegboard.me/en/peg-diff/) — 두 텍스트(혹은 코드)의 차이를 비교하는 diff 뷰어다.
 

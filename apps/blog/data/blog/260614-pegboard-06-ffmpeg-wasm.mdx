@@ -5,10 +5,12 @@ tags: ['pegboard', 'dev-log', 'wasm', 'ffmpeg', 'audio', 'cloudflare']
 draft: true
 summary: '브라우저 안에서 ffmpeg 를 돌려 오디오를 변환하는 유틸을 짰다. 멀티스레드 코어는 광고를 깨고, 단일스레드 코어는 30MiB라 Cloudflare Pages 25MiB 한계에 걸린다. gzip 셀프 호스팅 + 클라이언트 DecompressionStream + Batch 모드 + 다운로드 진행률 UX로 정리한 이야기.'
 images:
-  - '/static/images/coffee_machine_2.png'
+  - '/static/images/pegman01.png'
 ---
 
-![ffmpeg.wasm in browser](/static/images/coffee_machine_2.png)
+[![Pegman brand retirement](/static/images/pegman01.png)](https://pegboard.me)
+
+> [pegboard.me](https://pegboard.me)
 
 [2편](/blog/260610-pegboard-02-pegman-retirement)까지 시스템·다국어·브랜드를 다뤘으니, 이번 편부터는 *진짜로 무거운 유틸* 얘기다. 첫 번째는 [audio-converter](https://pegboard.me/en/audio-converter/).
 

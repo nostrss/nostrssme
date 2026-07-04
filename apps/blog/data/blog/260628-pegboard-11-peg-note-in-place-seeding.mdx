@@ -5,10 +5,12 @@ tags: ['pegboard', 'dev-log', 'nextjs', 'ssg', 'react', 'hydration', 'localstora
 draft: false
 summary: '페그보드의 첫 앱형 페그 PegNote 를 만들면서, "첫 방문자에게만 편집 가능한 샘플을 미리 채워두되 저장된 데이터는 절대 덮지 않는다"는 온보딩을 구현했다. 서버가 없는 정적 사이트에서 이걸 안전하게 하려면 결정론적 시드 ID·effect 복원·첫 저장 스킵이라는 세 메커니즘이 각각 다른 실패를 막아야 한다.'
 images:
-  - '/static/images/coffee_machine_2.png'
+  - '/static/images/pegman01.png'
 ---
 
-![PegNote — 빈 타공판에 첫 샘플을 거는 일](/static/images/coffee_machine_2.png)
+[![Pegman brand retirement](/static/images/pegman01.png)](https://pegboard.me)
+
+> [pegboard.me](https://pegboard.me)
 
 [페그보드 시리즈](/blog/260609-pegboard-01-start)가 10편에서 한 번 매듭을 지었지만, 타공판은 계속 채워진다. 이번엔 *시리즈 회고*가 아니라 *한 페그를 어떻게 구현했나*를 코드 단위로 푸는 글이다. 대상은 **[PegNote](https://pegboard.me/en/peg-note/)** — Workflowy 스타일의 미니멀 아웃라이너다. 불릿을 중첩하고, Tab으로 들여쓰고, 가지를 접고, 원하는 불릿으로 줌인하는 노트 앱.
 

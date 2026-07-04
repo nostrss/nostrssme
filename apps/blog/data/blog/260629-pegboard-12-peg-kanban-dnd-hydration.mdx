@@ -5,10 +5,12 @@ tags: ['pegboard', 'dev-log', 'react', 'dnd-kit', 'hydration', 'ssg', 'next', 'l
 draft: false
 summary: '정적 export(SSG) 위에서 드래그앤드롭 칸반 보드 PegKanban을 구현하면서 마주친 두 가지 비-자명한 디테일을 정리한다. (1) DndContext에 id를 박지 않으면 next dev에서만 드러나고 정적 빌드에선 잠복하는 하이드레이션 불일치, (2) localStorage 키 하나를 데이터 계약으로 삼아 오프라인 AI 채팅이 자연어로 보드를 조작하게 만든 경로. 코드를 읽으며 결정과 트레이드오프를 풀어쓴다.'
 images:
-  - '/static/images/coffee_machine_2.png'
+  - '/static/images/pegman01.png'
 ---
 
-![PegKanban](/static/images/coffee_machine_2.png)
+[![Pegman brand retirement](/static/images/pegman01.png)](https://pegboard.me)
+
+> [pegboard.me](https://pegboard.me)
 
 [페그보드 시리즈](/blog/260609-pegboard-01-start)가 10편에서 한 번 매듭을 지었지만, 시스템은 계속 자란다. 이번엔 *시리즈 회고*가 아니라 *한 페그를 어떻게 구현했나*를 코드 단위로 푸는 글이다. 대상은 **PegKanban** — Trello류 드래그앤드롭 칸반 보드다.
 
