@@ -2,7 +2,7 @@
 title: '브라우저에서 ffmpeg 를 돌리기 — 광고와 25MiB 한계 사이에서 오디오 컨버터를 짜기'
 date: '2026-06-14T10:00:00'
 tags: ['pegboard', 'dev-log', 'wasm', 'ffmpeg', 'audio', 'cloudflare']
-draft: true
+draft: false
 summary: '브라우저 안에서 ffmpeg 를 돌려 오디오를 변환하는 유틸을 짰다. 멀티스레드 코어는 광고를 깨고, 단일스레드 코어는 30MiB라 Cloudflare Pages 25MiB 한계에 걸린다. gzip 셀프 호스팅 + 클라이언트 DecompressionStream + Batch 모드 + 다운로드 진행률 UX로 정리한 이야기.'
 images:
   - '/static/images/pegman01.png'
