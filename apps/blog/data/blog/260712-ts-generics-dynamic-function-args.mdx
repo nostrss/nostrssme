@@ -1,0 +1,146 @@
+---
+title: '제네릭으로 함수 인자를 케이스별로 바꾸기 — Advanced TypeScript'
+date: '2026-07-12T10:00:00'
+tags: ['typescript', 'generics', 'til']
+draft: false
+summary: '이벤트 타입에 따라 payload 가 필수이기도, 아예 없어야 하기도 한 함수. 옵셔널 인자(?)로는 이걸 표현할 수 없다. Matt Pocock 의 영상을 보고 제네릭 + 조건부 타입 + named tuple 로 함수 시그니처 자체를 동적으로 바꾸는 패턴을 정리했다.'
+images:
+  - 'https://img.youtube.com/vi/YE_3WwX-Dl8/maxresdefault.jpg'
+---
+
+[![Dynamic function arguments with GENERICS](https://img.youtube.com/vi/YE_3WwX-Dl8/maxresdefault.jpg)](https://www.youtube.com/watch?v=YE_3WwX-Dl8)
+
+> 출처: [Dynamic function arguments with GENERICS - Advanced TypeScript](https://www.youtube.com/watch?v=YE_3WwX-Dl8) — Matt Pocock.
+
+## 문제 — "어떤 이벤트는 payload 가 필수, 어떤 이벤트는 없어야 한다"
+
+이벤트를 보내는 함수를 생각해 보자.
+
+```ts
+type Event =
+  | { type: 'LOG_IN'; payload: { userId: string } }
+  | { type: 'SIGN_OUT' };
+
+const sendEvent = (eventType: Event['type'], payload?: any) => {
+  // ...
+};
+```
+
+`payload?` 로 선언하는 순간 타입 시스템이 아무것도 지켜주지 못한다.
+
+```ts
+sendEvent('SIGN_OUT'); // OK
+
+sendEvent('LOG_IN', { userId: '123' }); // OK
+
+// 전부 통과해 버린다 — 에러가 나야 하는데
+sendEvent('LOG_IN'); // payload 를 빼먹어도 통과
+sendEvent('LOG_IN', {}); // 빈 payload 도 통과
+sendEvent('SIGN_OUT', { userId: '123' }); // 없어야 할 payload 도 통과
+```
+
+`LOG_IN` 은 payload 가 **필수**고, `SIGN_OUT` 은 payload 가 **없어야** 한다. 즉 "옵셔널"이 아니라 **케이스별로 시그니처가 달라야** 하는 상황인데, `?` 하나로는 이걸 표현할 수 없다.
+
+## 해결 — 제네릭 + 조건부 타입으로 인자 튜플을 갈아끼운다
+
+핵심 아이디어는 세 가지다.
+
+1. 이벤트 타입을 **제네릭** `Type` 으로 받는다
+2. `Extract` 로 유니온에서 해당 이벤트만 뽑아내고, 조건부 타입 + `infer` 로 payload 유무를 검사한다
+3. 그 결과에 따라 **rest 파라미터의 튜플 타입** 자체를 `[type, payload]` 또는 `[type]` 으로 바꾼다
+
+```ts
+const sendEvent = <Type extends Event['type']>(
+  ...args: Extract<Event, { type: Type }> extends { payload: infer TPayload }
+    ? [type: Type, payload: TPayload]
+    : [type: Type]
+) => {
+  // ...
+};
+```
+
+이제 타입 시스템이 케이스별 시그니처를 정확히 강제한다.
+
+```ts
+sendEvent('SIGN_OUT'); // OK
+sendEvent('LOG_IN', { userId: '123' }); // OK
+
+sendEvent('LOG_IN'); // ❌ payload 인자가 없다는 에러
+sendEvent('LOG_IN', {}); // ❌ userId 가 없다는 에러
+sendEvent('SIGN_OUT', { userId: '123' }); // ❌ 인자가 하나여야 한다는 에러
+```
+
+`sendEvent('LOG_IN', ...)` 을 입력하는 순간 payload 의 형태까지 자동완성으로 안내된다.
+
+## 디테일 — named tuple 로 인자 이름 살리기
+
+튜플을 그냥 `[Type, TPayload]` 로 쓰면 에디터 자동완성에 인자 이름이 `args_0`, `args_1` 로 뜬다. 튜플 요소에 이름을 붙이는 **named tuple** 문법을 쓰면 해결된다.
+
+```ts
+// 이름 없는 튜플 — 자동완성: (args_0: "LOG_IN", args_1: { userId: string })
+? [Type, TPayload]
+: [Type]
+
+// named tuple — 자동완성: (type: "LOG_IN", payload: { userId: string })
+? [type: Type, payload: TPayload]
+: [type: Type]
+```
+
+## 프론트엔드에서 언제 쓰면 좋을까
+
+"판별 키 하나 + 케이스별로 다른 데이터"를 함수 인자로 받는 API 라면 전부 후보다.
+
+### 1. 애널리틱스 이벤트 트래킹
+
+가장 흔한 케이스. 이벤트마다 필요한 속성이 다른데, `track(name, props?: any)` 로 두면 속성 누락·오타가 런타임까지 흘러간다.
+
+```ts
+type AnalyticsEvent =
+  | { type: 'page_view'; payload: { path: string } }
+  | { type: 'purchase'; payload: { itemId: string; price: number } }
+  | { type: 'logout' };
+
+track('purchase', { itemId: 'A1', price: 9900 }); // OK
+track('purchase', { itemId: 'A1' }); // ❌ price 누락
+track('logout'); // OK — payload 를 넘기면 에러
+```
+
+GA·Amplitude 래퍼를 만들 때 이 패턴을 깔아두면, 이벤트 스펙 문서를 타입이 대신한다.
+
+### 2. 토스트 / 모달 열기 함수
+
+variant 에 따라 필요한 옵션이 다른 UI 헬퍼.
+
+```ts
+type Toast =
+  | { type: 'success'; payload: { message: string } }
+  | { type: 'error'; payload: { message: string; retry: () => void } }
+  | { type: 'loading' };
+
+showToast('error', { message: '저장 실패', retry: onRetry }); // retry 강제
+showToast('loading'); // 인자 없이
+```
+
+`error` 토스트에 재시도 콜백을 빼먹는 실수를 컴파일 타임에 잡는다.
+
+### 3. `postMessage` / WebSocket 메시지 전송
+
+iframe·워커·서버로 메시지를 보내는 함수는 결국 `{ type, payload }` 유니온이다. `send(msg: any)` 대신 이 패턴을 쓰면 프로토콜이 곧 타입이 된다.
+
+```ts
+sendToWorker('encode', { file, format: 'webm' });
+sendToWorker('cancel'); // payload 없는 메시지
+```
+
+### 4. reducer 의 dispatch 헬퍼
+
+`dispatch({ type: 'setUser', payload: user })` 는 이미 타입이 잡히지만, `dispatch('setUser', user)` 처럼 평평한 시그니처의 헬퍼를 만들고 싶을 때 이 패턴이 필요하다. 액션마다 payload 유무가 다르기 때문이다.
+
+공통점은 하나다 — **함수를 호출하는 쪽이 문자열 리터럴 하나를 고르고, 그 선택이 나머지 인자를 결정한다.** 이 구조가 보이면 `payload?: any` 를 쓰기 전에 이 패턴을 떠올리면 된다.
+
+## 정리
+
+- 옵셔널 인자 `?` 는 "있어도 되고 없어도 된다"이지, "케이스에 따라 필수/금지"를 표현하지 못한다
+- 제네릭으로 판별 키를 받고, `Extract` + 조건부 타입 + `infer` 로 rest 파라미터의 튜플 타입을 분기하면 **함수 시그니처 자체를 인자 값에 따라 바꿀 수 있다**
+- named tuple 로 인자 이름까지 챙기면 DX 가 완성된다
+- 문법이 다소 장황하므로, 이벤트 디스패처·메시지 버스처럼 판별 유니온 기반 API 에서만 꺼내 쓰는 게 좋다
