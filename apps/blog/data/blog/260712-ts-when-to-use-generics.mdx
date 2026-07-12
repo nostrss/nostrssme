@@ -1,0 +1,167 @@
+---
+title: '제네릭, 언제 써야 할까 — Advanced TypeScript'
+date: '2026-07-12T12:00:00'
+tags: ['typescript', 'generics', 'til', 'matt-pocock']
+draft: false
+summary: '유니온 타입으로 충분한데 제네릭을 쓰고 있진 않은가? Matt Pocock 은 한 가지 질문으로 판단하라고 한다 — "함수를 만드는 시점에 모든 요소를 알고 있는가?" 알고 있다면 유니온, 입력에 따라 반환 타입이 달라져야 하는 순간부터 제네릭이다.'
+images:
+  - 'https://img.youtube.com/vi/lMfGp29Ht8c/maxresdefault.jpg'
+---
+
+[![WHEN should I use a Generic?](https://img.youtube.com/vi/lMfGp29Ht8c/maxresdefault.jpg)](https://www.youtube.com/watch?v=lMfGp29Ht8c)
+
+> 출처: [WHEN should I use a Generic? - Advanced TypeScript](https://www.youtube.com/watch?v=lMfGp29Ht8c) — Matt Pocock. 영상의 내용을 기록으로 남겨두기 위해 블로그로 작성했다.
+
+## 문제 — 이 함수에 제네릭이 필요한가?
+
+제네릭을 쓸지 말지 애매할 때가 있다. Matt Pocock 은 이럴 때 스스로에게 던질 첫 질문을 하나 제시한다.
+
+> **"함수를 만드는 시점에 모든 요소(elements)를 알고 있는가?"**
+
+동물의 이름을 표시하는 함수로 시작해 보자.
+
+```ts
+interface Animal {
+  name: string;
+}
+
+const getDisplayName = (item: Animal) => {
+  return { displayName: item.name };
+};
+```
+
+여기에 약간의 동적인 요소를 더한다 — 이제 `Animal` 뿐 아니라 `Human` 도 받아야 한다.
+
+```ts
+interface Human {
+  firstName: string;
+  lastName: string;
+}
+
+const getDisplayName = (item: Animal | Human) => {
+  // ...
+};
+```
+
+입력이 둘 중 하나가 되니 "동적"으로 보인다. 그래서 제네릭을 꺼내고 싶어진다. 하지만 잘 보면 — **함수 호출 전에 이미 모든 타입을 알고 있다.** 들어올 수 있는 건 `Animal` 아니면 `Human` 뿐이고, 각각의 형태도 전부 정의돼 있다.
+
+## 해결 1 — 요소를 다 알고 있다면 유니온으로 충분하다
+
+이 경우 필요한 건 유니온 타입과 타입 내로잉뿐이다. `in` 연산자로 분기하면 된다.
+
+```ts
+const getDisplayName = (item: Animal | Human) => {
+  if ('name' in item) {
+    return { displayName: item.name };
+  }
+  return { displayName: `${item.firstName} ${item.lastName}` };
+};
+```
+
+`'name' in item` 브랜치 안에서 TypeScript 는 `item` 을 `Animal` 로 좁혀 주고, 바깥 브랜치에서는 `Human` 으로 좁혀 준다. 제네릭 없이 끝난다.
+
+## 해결 2 — 반환 타입이 입력에 반응해야 하면 제네릭이다
+
+제네릭이 진짜 필요해지는 건 두 가지 경우다.
+
+1. **어떤 타입이 들어올지 정말로 모를 때**
+2. **함수 내부(특히 반환 타입)가 그 타입을 알아야 할 때**
+
+위 함수의 반환 타입을 입력에 따라 다르게 만들고 싶다고 하자 — `Human` 을 넣으면 `humanName`, `Animal` 을 넣으면 `animalName` 이 나오게.
+
+```ts
+const getDisplayName = <TItem extends Animal | Human>(
+  item: TItem,
+): TItem extends Human
+  ? { humanName: string }
+  : { animalName: string } => {
+  if ('name' in item) {
+    return { animalName: item.name } as any;
+  }
+  return { humanName: `${item.firstName} ${item.lastName}` } as any;
+};
+```
+
+이제 호출부에서 반환 타입이 입력에 반응한다.
+
+```ts
+const result1 = getDisplayName({ name: 'Rex' });
+// { animalName: string }
+
+const result2 = getDisplayName({ firstName: 'Matt', lastName: 'Pocock' });
+// { humanName: string }
+```
+
+만약 제네릭 없이 반환 타입을 그냥 유니온으로 선언하면 어떻게 될까?
+
+```ts
+const getDisplayName = (
+  item: Animal | Human,
+): { humanName: string } | { animalName: string } => { ... };
+
+const result = getDisplayName({ name: 'Rex' });
+// { humanName: string } | { animalName: string } — 뭘 넣든 항상 유니온
+```
+
+**무엇을 넣든 반환 타입이 반응하지 않는다.** 항상 두 가능성의 유니온이 나올 뿐이다. 제네릭 + 조건부 타입은 TypeScript 의 추론을 "해킹"해서, 호출 시점의 입력 정보를 반환 타입까지 흘려보내는 장치다.
+
+> 자동 자막 기반이라 코드 예시는 영상 내용을 재구성한 것이다. 조건부 반환 타입 구현부의 `as any` 는 TypeScript 가 제네릭 조건부 반환 타입을 함수 본문 안에서 검증하지 못하는 한계 때문에 흔히 쓰는 우회다.
+
+## 언제 쓰면 좋을까
+
+### 프론트엔드
+
+**폼 필드 값 추출** — 필드 타입에 따라 반환 타입이 달라지는 getter:
+
+```ts
+const getFieldValue = <T extends 'checkbox' | 'text'>(
+  type: T,
+  el: HTMLInputElement,
+): T extends 'checkbox' ? boolean : string =>
+  (type === 'checkbox' ? el.checked : el.value) as any;
+
+const checked = getFieldValue('checkbox', el); // boolean
+const text = getFieldValue('text', el); // string
+```
+
+**훅의 옵션에 따라 달라지는 반환값** — `select` 옵션을 주면 변환된 타입, 안 주면 원본:
+
+```ts
+function useQueryData<TData, TSelected = TData>(
+  key: string,
+  select?: (data: TData) => TSelected,
+): TSelected { ... }
+```
+
+반면 "props 로 `size: 'sm' | 'md' | 'lg'` 를 받는 버튼" 같은 건 요소를 전부 알고 있으므로 유니온이면 충분하다.
+
+### 백엔드
+
+**리소스별 응답 타입이 다른 fetcher** — 엔드포인트 이름으로 반환 타입이 결정될 때:
+
+```ts
+type Endpoints = { user: User; post: Post };
+
+const fetchResource = async <K extends keyof Endpoints>(
+  key: K,
+): Promise<Endpoints[K]> => { ... };
+
+const user = await fetchResource('user'); // User
+```
+
+**직렬화 옵션에 따른 반환 분기** — `raw: true` 면 Buffer, 아니면 파싱된 객체:
+
+```ts
+const readPayload = <TRaw extends boolean>(
+  raw: TRaw,
+): TRaw extends true ? Buffer : ParsedPayload => { ... };
+```
+
+반대로 "요청 body 가 `CreateDto | UpdateDto` 중 하나"인 핸들러는 `in` 내로잉으로 처리하는 게 맞다.
+
+## 정리
+
+- 제네릭을 꺼내기 전에 물어보자 — **함수를 만드는 시점에 모든 요소와 타입을 알고 있는가?**
+- 알고 있다면 유니온 타입 + 내로잉(`in`, 타입 가드)으로 충분하다. 입력이 여러 종류라는 것만으로는 제네릭의 이유가 되지 않는다.
+- 제네릭이 필요한 순간은 **어떤 타입이 올지 정말 모르거나, 반환 타입이 입력에 반응해야 할 때**다.
+- 반환 타입을 유니온으로 선언하면 뭘 넣든 항상 유니온이 나온다. 제네릭 + 조건부 타입은 호출 시점의 타입 정보를 반환 타입까지 전달하는 장치다.
