@@ -1,0 +1,117 @@
+---
+title: 'wrapper 가 flexbox 를 깨뜨릴 때 — display: contents 한 줄로 해결하기'
+date: '2026-07-12T13:00:00'
+tags: ['css', 'flexbox', 'til', 'coding2go']
+draft: false
+summary: 'flexbox 는 직계 자식에만 적용되기 때문에, 그룹핑용 wrapper div 를 추가하는 순간 레이아웃이 깨지고 wrapper 안에 같은 flexbox 코드를 또 써야 했다. display: contents 한 줄이면 wrapper 를 레이아웃 흐름에서 지워서 자식들이 원래 flex 컨테이너의 아이템처럼 배치된다. 대신 wrapper 의 시각적 스타일이 전부 사라지는 함정을 알아야 한다.'
+images:
+  - 'https://img.youtube.com/vi/rDJVW8RI6Vk/maxresdefault.jpg'
+---
+
+[![Fix Your FLEXBOX Layouts With This Simple CSS TRICK!](https://img.youtube.com/vi/rDJVW8RI6Vk/maxresdefault.jpg)](https://www.youtube.com/watch?v=rDJVW8RI6Vk)
+
+> 출처: [Fix Your FLEXBOX Layouts With This Simple CSS TRICK!](https://www.youtube.com/watch?v=rDJVW8RI6Vk) — Coding2GO (Fabian). 영상의 내용을 기록으로 남겨두기 위해 블로그로 작성했다.
+
+## 문제 — flexbox 는 직계 자식에만 적용된다
+
+flexbox 의 오래된 골칫거리 하나. **flexbox 레이아웃은 flex 컨테이너의 직계 자식(direct children)에만 적용된다.** 레이아웃 일부를 그룹으로 묶으려고 wrapper 요소를 끼워 넣는 순간 레이아웃이 깨진다.
+
+잘 동작하는 navbar 가 있다고 하자.
+
+```html
+<ul class="nav">
+  <li><a href="/">Home</a></li>
+  <li><a href="/about">About</a></li>
+  <li><a href="/login">Login</a></li>
+</ul>
+```
+
+```css
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+```
+
+여기에 검색·다크모드 같은 아이콘 버튼들을 묶은 `controls` 컨테이너를 추가한다. 버튼들을 CSS 에서 따로 스타일링하기 위한 그룹핑용 div 다.
+
+```html
+<ul class="nav">
+  <li><a href="/">Home</a></li>
+  <li><a href="/about">About</a></li>
+  <li><a href="/login">Login</a></li>
+  <div class="controls">
+    <li><button>🔍</button></li>
+    <li><button>🌙</button></li>
+  </div>
+</ul>
+```
+
+버튼 자체는 예쁘게 나오는데 레이아웃에 안 맞는다. flex 컨테이너는 `ul` 이고, flexbox 입장에서 `controls` div 는 **flex item 하나**일 뿐이다. `gap` 과 수직 정렬이 div 에 적용되지, 그 안의 `li` 개별 요소에는 적용되지 않는다.
+
+보통은 wrapper 안에 flexbox 를 다시 선언해서 해결한다.
+
+```css
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem; /* 같은 코드를 또 쓴다 */
+}
+```
+
+동작은 하지만 같은 flexbox 코드가 두 곳에 중복된다.
+
+## 해결 — display: contents 한 줄
+
+```css
+.controls {
+  display: contents;
+}
+```
+
+이제 `ul` 의 flexbox 레이아웃이 `li` 들에 직접 적용되고 `gap` 도 동작한다.
+
+**`display: contents` 는 해당 요소를 레이아웃 흐름에서 제거한다.** 브라우저는 `controls` 컨테이너가 아예 없는 것처럼 동작하고, 자식 `li` 들은 마치 `ul` 의 직계 자식인 것처럼 취급되어 flex item 이 된다. HTML 계층에서 자식들을 한 단계 위로 끌어올리는 셈이다 — DOM 구조는 그대로 두고, 레이아웃만.
+
+## 주의 — 박스가 사라지면 스타일도 사라진다
+
+쓰기 전에 알아야 할 두 가지.
+
+**1. 브라우저 지원이 완벽하지 않다.** 기본 동작은 모든 모던 브라우저가 지원하지만, 접근성 트리 처리 등에서 구현 이슈가 있었던 속성이니 타깃 브라우저를 확인하고 쓰자.
+
+**2. wrapper 에 적용한 시각적 스타일이 전부 사라진다.** margin, padding, background-color — 박스 자체가 없어지므로 모두 무시된다.
+
+영상의 예시: `controls` 컨테이너에 `margin-left: auto` 성격의 margin 을 줘서 오른쪽으로 분리해 뒀는데, `display: contents` 를 적용하자 그 margin 이 동작을 멈췄다. 이제 margin 은 컨테이너가 아니라 **자식 요소 쪽으로 옮겨야** 한다 — 컨테이너의 첫 자식에 주거나, 그 앞의 마지막 아이템(login 링크)에 주면 다시 동작한다.
+
+```css
+/* 전: wrapper 에 margin — display: contents 후엔 무시됨 */
+.controls {
+  display: contents;
+  margin-left: auto; /* ❌ 동작 안 함 */
+}
+
+/* 후: 자식(또는 이웃 아이템)으로 이동 */
+.controls li:first-child {
+  margin-left: auto; /* ✅ */
+}
+```
+
+## 언제 쓰면 좋을까
+
+원칙: **wrapper 를 시각적으로 스타일링할 필요가 없고, 자식 요소를 묶는 용도로만 쓸 때.** 컨테이너가 구조적 이유로만 존재하는 경우가 딱 그렇다.
+
+- **시맨틱 HTML 그룹핑** — 의미상 묶고 싶지만 레이아웃엔 끼어들면 안 되는 경우
+- **접근성 속성** — `aria-*` 를 달기 위한 그룹 요소
+- **SEO** — 구조화 목적의 마크업
+
+React 등 컴포넌트 기반 프레임워크에서 특히 유용하다. 컴포넌트가 루트 요소 하나로 감싸서 반환되는 탓에 부모의 flex/grid 레이아웃이 깨지는 상황 — 그 루트에 `display: contents` 를 주면 컴포넌트 경계와 레이아웃 경계를 분리할 수 있다.
+
+반대로 wrapper 에 배경·테두리·여백을 줘야 한다면 쓰면 안 된다. 박스가 사라지니까.
+
+## 정리
+
+- flexbox 는 **직계 자식에만** 적용된다. 그룹핑용 wrapper 를 넣으면 wrapper 가 flex item 하나로 취급되어 레이아웃이 깨진다.
+- `display: contents` 는 요소를 레이아웃 흐름에서 제거해, 자식들이 한 단계 위 컨테이너의 직계 자식처럼 배치되게 한다. flexbox 중복 선언이 사라진다.
+- 대신 wrapper 의 margin, padding, background 등 **시각적 스타일이 전부 무시된다** — 필요하면 자식 요소로 옮겨야 한다.
+- 시맨틱 그룹핑, 접근성, SEO 처럼 **구조적 이유로만 존재하는 컨테이너**에 쓰는 속성이다.
