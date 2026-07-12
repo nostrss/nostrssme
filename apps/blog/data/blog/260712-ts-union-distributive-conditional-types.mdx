@@ -1,0 +1,143 @@
+---
+title: '유니온에서 멤버 하나 지우기 — 조건부 타입의 분배 법칙 (Advanced TypeScript)'
+date: '2026-07-12T11:00:00'
+tags: ['typescript', 'generics', 'til', 'matt-pocock']
+draft: false
+summary: "'a' | 'b' | 'c' 에서 'c' 만 빼고 싶다. 객체나 배열은 map 으로 순회하면 되는데, 유니온의 iterator 는 뭘까? 답은 \"직접 순회할 필요가 없다\" — 조건부 타입이 유니온을 만나면 TypeScript 가 멤버 하나하나에 자동으로 분배(distribute)해 준다. Matt Pocock 의 영상을 보고 정리했다."
+images:
+  - 'https://img.youtube.com/vi/M4-Jl9JWGmo/maxresdefault.jpg'
+---
+
+[![REMOVE a member of a Union Type](https://img.youtube.com/vi/M4-Jl9JWGmo/maxresdefault.jpg)](https://www.youtube.com/watch?v=M4-Jl9JWGmo)
+
+> 출처: [REMOVE a member of a Union Type - Advanced TypeScript](https://www.youtube.com/watch?v=M4-Jl9JWGmo) — Matt Pocock. 영상의 내용을 기록으로 남겨두기 위해 블로그로 작성했다.
+
+## 퍼즐 — 유니온에서 멤버 하나만 빼려면?
+
+```ts
+type Letters = 'a' | 'b' | 'c';
+```
+
+여기서 `'c'` 만 제거한 `'a' | 'b'` 를 만드는 타입 헬퍼를 짜고 싶다.
+
+객체라면 mapped type 으로, 배열이라면 인덱스로 순회하면 된다. 그런데 **유니온의 iterator 는 뭘까?** 멤버를 하나씩 돌면서 검사할 방법이 없어 보인다.
+
+## 답 — 순회할 필요가 없다, TypeScript 가 알아서 분배한다
+
+조건부 타입에 제네릭으로 유니온을 넘기면, TypeScript 는 조건 검사를 **유니온 전체가 아니라 멤버 하나하나에 대해** 수행한다. 이게 **분배 법칙(distributivity)** 이다.
+
+```ts
+type RemoveC<TType> = TType extends 'c' ? never : TType;
+
+type WowWithoutC = RemoveC<Letters>; // 'a' | 'b'
+```
+
+직관과 다른 지점이 여기다. `'a' | 'b' | 'c'` 에는 `'c'` 가 포함되니까 `TType extends 'c'` 가 참이 되어 통째로 `never` 가 될 것 같지만, 실제로는 이렇게 동작한다.
+
+```ts
+// TypeScript 가 내부적으로 하는 일
+RemoveC<'a' | 'b' | 'c'>
+= RemoveC<'a'> | RemoveC<'b'> | RemoveC<'c'>  // 멤버별로 분배
+= 'a' | 'b' | never                            // 각각 조건 검사
+= 'a' | 'b'                                    // never 는 유니온에서 스스로 사라진다
+```
+
+두 가지 성질이 맞물린 결과다.
+
+1. **분배**: naked type parameter(`TType` 처럼 제네릭이 그대로 조건 왼쪽에 오는 형태)에 유니온을 넘기면, 조건부 타입이 멤버별로 풀린다
+2. **never 의 소멸**: `never` 는 "존재할 수 없는 타입"이라 유니온에 더해지면 그냥 사라진다 — 그래서 "제거"의 표현으로 쓰인다
+
+## 제거만이 아니라 변환도 된다
+
+분기에서 `never` 대신 다른 타입을 돌려주면, 유니온 멤버를 **교체**할 수 있다.
+
+```ts
+type ReplaceCWithD<TType> = TType extends 'c' ? 'd' : TType;
+
+type Wow = ReplaceCWithD<Letters>; // 'a' | 'b' | 'd'
+```
+
+즉 분배 법칙은 사실상 **유니온에 대한 map** 이다. 조건부 타입이 콜백이고, 각 멤버가 순회 대상이다.
+
+## 사실 이건 내장 `Exclude` 다
+
+위의 `RemoveC` 를 일반화하면 TypeScript 내장 유틸리티 `Exclude<T, U>` 가 된다. 정의도 정확히 같다.
+
+```ts
+// lib.es5.d.ts
+type Exclude<T, U> = T extends U ? never : T;
+
+type WowWithoutC = Exclude<Letters, 'c'>; // 'a' | 'b'
+```
+
+`Extract`, `NonNullable` 도 전부 같은 분배 법칙 위에 서 있다. 헬퍼를 직접 짤 일은 드물지만, **왜 `Exclude` 가 동작하는지** 를 알면 내장 유틸리티로 안 되는 변형을 직접 만들 수 있다.
+
+## 언제 쓰면 좋을까
+
+### 프론트엔드
+
+**props variant 좁히기** — 라이브러리의 variant 유니온에서 우리 디자인 시스템이 지원하지 않는 값만 빼고 재노출할 때.
+
+```ts
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'link';
+type OurVariant = Exclude<ButtonVariant, 'link'>; // link 는 미지원
+```
+
+**판별 유니온에서 특정 케이스 걸러내기** — 내부 전용 액션을 뺀, 외부에 노출할 액션만 남길 때.
+
+```ts
+type Action =
+  | { type: 'fetch'; url: string }
+  | { type: 'cancel' }
+  | { type: 'reset' };
+
+type PublicAction = Exclude<Action, { type: 'reset' }>;
+```
+
+**이벤트 이름 일괄 변환** — `never` 대신 다른 타입을 돌려주는 커스텀 헬퍼. template literal 과 조합하면 유니온 전체에 프리픽스를 붙일 수 있다.
+
+```ts
+type Events = 'click' | 'focus' | 'blur';
+
+type Prefixed<T extends string> = T extends string ? `on:${T}` : never;
+
+type PrefixedEvents = Prefixed<Events>; // 'on:click' | 'on:focus' | 'on:blur'
+```
+
+### 백엔드
+
+**API 응답에서 상태별 타입 분리** — 성공/실패가 유니온으로 정의된 응답에서 에러 케이스만 뽑아 에러 핸들러의 파라미터 타입으로 쓸 때. (`Extract` 도 같은 분배 법칙이다)
+
+```ts
+type ApiResponse =
+  | { status: 'ok'; data: User }
+  | { status: 'not_found' }
+  | { status: 'error'; code: number };
+
+type ErrorResponse = Exclude<ApiResponse, { status: 'ok' }>;
+// { status: 'not_found' } | { status: 'error'; code: number }
+```
+
+**권한/역할에서 특정 등급 제외** — 일반 사용자에게 부여 가능한 역할만 남기기.
+
+```ts
+type Role = 'admin' | 'moderator' | 'member' | 'guest';
+type AssignableRole = Exclude<Role, 'admin'>; // admin 은 수동 부여만
+```
+
+**이벤트 소싱·메시지 큐의 토픽 필터링** — 컨슈머별로 구독 가능한 이벤트 유니온을 전체 이벤트에서 깎아내려 만들 때. 새 이벤트가 추가되면 컨슈머 타입에 자동 반영된다.
+
+```ts
+type DomainEvent = 'user.created' | 'user.deleted' | 'order.placed' | 'order.refunded';
+type BillingEvent = Extract<DomainEvent, `order.${string}`>;
+// 'order.placed' | 'order.refunded'
+```
+
+공통점은 하나다 — **유니온을 "값들의 목록"으로 보고 필터/맵을 하고 싶을 때**, 분배 조건부 타입이 그 iterator 역할을 한다. 원본 유니온 하나만 유지하고 나머지는 전부 깎아서 만들면, 멤버가 추가·삭제될 때 파생 타입들이 따라 움직인다.
+
+## 정리
+
+- 조건부 타입에 naked 제네릭으로 유니온을 넘기면 멤버별로 **분배**되어 평가된다 — 유니온의 map 이다
+- `never` 는 유니온에서 스스로 사라지므로, 분기에서 `never` 를 돌려주는 것이 곧 **제거**다
+- `never` 대신 다른 타입을 돌려주면 **교체/변환**이 된다
+- 이 패턴의 일반형이 내장 `Exclude<T, U>` — 내장으로 충분하면 내장을 쓰고, 변형이 필요할 때만 직접 짠다
