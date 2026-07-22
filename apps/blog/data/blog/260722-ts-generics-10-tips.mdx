@@ -1,0 +1,237 @@
+---
+title: 'TypeScript 제네릭 마스터를 위한 10가지 팁 — (Generics: The most intimidating TypeScript feature)'
+date: '2026-07-22T11:00:00'
+tags: ['typescript', 'til', 'matt-pocock']
+draft: false 
+summary: '제네릭은 타입 함수(type helper)라는 관점에서 출발해, 런타임 인자로부터의 추론, extends 제약, 다중 제네릭, 타입 파라미터 기본값, Zod 스키마 연동까지 — Matt Pocock 이 꼽은 제네릭 실전 팁 10가지를 정리했다.'
+images:
+  - 'https://img.youtube.com/vi/dLPgQRbVquo/maxresdefault.jpg'
+---
+
+[![Generics: The most intimidating TypeScript feature](https://img.youtube.com/vi/dLPgQRbVquo/maxresdefault.jpg)](https://www.youtube.com/watch?v=dLPgQRbVquo)
+
+> 출처: [Generics: The most intimidating TypeScript feature](https://www.youtube.com/watch?v=dLPgQRbVquo) — Matt Pocock. 영상의 내용을 기록으로 남겨두기 위해 ai로 번역해서 블로그 작성했다.
+
+제네릭 없이 TypeScript 를 쓴다는 건 끔찍한 일이다. 직접 작성해 본 적이 없더라도 이미 수천 개의 제네릭을 사용해 왔다. 영상은 제네릭을 10개의 팁으로 쪼개서 단계적으로 설명한다.
+
+> 아래 코드는 화면을 직접 본 것이 아니라 자막을 기반으로 재구성한 예시다.
+
+## 1. 제네릭 타입은 "타입 함수"다
+
+제네릭의 첫 번째 패턴. 타입에 인자를 받는 선언을 하면, 그 타입은 **인자를 받아 다른 타입을 만들어내는 타입 함수(type helper)** 가 된다.
+
+```ts
+type MyGenericType<TData> = {
+  data: TData;
+};
+
+type Example1 = MyGenericType<{ firstName: string }>;
+// { data: { firstName: string } }
+
+type Example2 = MyGenericType<number>;
+// { data: number }
+```
+
+인자를 안 넘기면 `generic type 'MyGenericType' requires 1 type argument(s)` 에러가 난다. 하나의 선언으로 여러 타입을 찍어내는 것 — 이게 제네릭 타입이다.
+
+## 2. 제네릭 함수 = 함수 + 타입 함수
+
+두 번째 패턴. 함수 위에 타입 함수를 얹으면 제네릭 함수가 된다.
+
+```ts
+const makeFetch = <TData>(url: string): Promise<TData> => {
+  return fetch(url).then((res) => res.json());
+};
+
+// 런타임 인자 1개 + 타입 인자 1개
+const result = await makeFetch<{ firstName: string; lastName: string }>('/api/user');
+// result: { firstName: string; lastName: string }
+```
+
+타입 인자를 안 쓰면 반환이 `any` 가 되거나, 호출부마다 `as` 나 변수 타입 표기를 덕지덕지 붙여야 한다. 함수 선언부의 `<TData>` 가 그 표기를 함수 안쪽으로 흡수한다.
+
+## 3. 제네릭 함수는 이미 도처에 있다
+
+`Set` 은 JavaScript 내장이지만 타입 선언은 제네릭이다.
+
+```ts
+const set = new Set(); // Set<unknown>
+set.add(1);
+set.add('abc'); // 에러가 안 난다
+
+const numberSet = new Set<number>();
+numberSet.add(1);
+numberSet.add('abc'); // ❌ Error
+```
+
+런타임 인자를 하나도 안 넘겨도 타입 인자는 넘길 수 있다. React 를 쓴다면 `useState`, `useRef`, `useReducer`, `createContext` 가 전부 이런 식으로 타입 인자를 요구하는 대표적인 제네릭 함수다.
+
+## 4. 타입 인자는 런타임 인자에서 추론된다
+
+제네릭 이해의 중심 아이디어. **타입 인자를 안 넘기면 TypeScript 가 런타임 인자를 보고 추론한다.**
+
+```ts
+const addIdToObject = <TObj>(obj: TObj) => {
+  return { ...obj, id: '123' };
+};
+
+const result = addIdToObject({ firstName: 'Matt', lastName: 'Pocock' });
+// TObj 가 { firstName: string; lastName: string } 로 추론됨
+result.id; // ✅ 자동완성까지 된다
+```
+
+선언부 시그니처는 복잡해 보여도, 사용하는 쪽은 타입 인자를 신경 쓸 필요가 없다. 제네릭 마법의 대부분이 이 추론에서 나온다.
+
+## 5. 제약(constraint) — extends 로 입력을 제한한다
+
+`ReturnType` 과 `Awaited` 를 조합해 "Promise 를 반환하는 함수의 resolve 타입" 을 뽑는 헬퍼를 만들면 에러가 난다.
+
+```ts
+type GetPromiseReturnType<T> = Awaited<ReturnType<T>>;
+// ❌ Type 'T' does not satisfy the constraint '(...args: any) => any'
+```
+
+`ReturnType` 의 선언을 열어 보면 타입 인자 옆에 `extends` 절이 붙어 있다 — string 은 호출할 수 없으니 반환 타입이라는 개념 자체가 성립하지 않기 때문이다. 같은 제약을 우리 헬퍼에도 걸어 주면 된다.
+
+```ts
+type GetPromiseReturnType<T extends (...args: any) => any> = Awaited<ReturnType<T>>;
+
+type Result = GetPromiseReturnType<() => Promise<{ firstName: string }>>;
+// { firstName: string }
+
+type Result2 = GetPromiseReturnType<string>; // ❌ 함수만 받는다
+```
+
+## 6. 제네릭 함수에도 제약을 건다
+
+키별 숫자 값 중 최댓값의 키를 찾는 함수. 함수 내부에서 `Object.keys(obj)` 를 호출하려면 `TObj` 가 객체임을 보장해야 한다.
+
+```ts
+const getKeyWithHighestValue = <TObj extends Record<string, number>>(
+  obj: TObj
+): { key: keyof TObj; value: number } => {
+  // ...
+};
+
+const result = getKeyWithHighestValue({ a: 1, b: 2, c: 3 });
+result.key; // 'a' | 'b' | 'c'
+result.value; // number
+
+getKeyWithHighestValue({ a: true }); // ❌ boolean is not assignable to number
+```
+
+제약을 걸어도 **추론은 그대로 동작한다** — 입력을 제한하면서 구체적인 타입은 여전히 캡처된다. 제네릭 함수에는 대개 제약을 거는 게 맞다. 사용자가 넘길 수 있는 것을 통제할수록 함수 내부의 방어 로직이 줄어든다.
+
+## 7. 제네릭 함수 안에서는 네가 TypeScript 보다 잘 안다 — as 를 써라
+
+`Object.keys` 는 항상 `string[]` 을 반환하도록 선언되어 있어서, 키 타입을 보존하는 typed 버전을 만들면 반환 타입이 안 맞는다고 에러가 난다.
+
+```ts
+const typedObjectKeys = <TObj extends object>(obj: TObj): Array<keyof TObj> => {
+  return Object.keys(obj) as Array<keyof TObj>;
+};
+```
+
+`as` 는 "내가 TypeScript 보다 더 잘 안다" 는 단언이라 보통은 피해야 하지만, **고도로 제네릭한 함수 내부에서는 필요한 도구다.** 복잡한 제네릭 시그니처 안에서 TypeScript 는 길을 잃는다. 실제로 많은 라이브러리가 내부 구현에 `as any` 를 붙여서 반환 타입을 맞춘다 — 제네릭 함수 안에서라면 전혀 이상한 일이 아니다.
+
+## 8. 다중 제네릭 — 인자 사이의 추론 연결
+
+객체와 키를 받아 값을 반환하는 함수. 제네릭이 하나면 반환 타입이 뭉개진다.
+
+```ts
+// 1차 시도 — 반환이 union 으로 뭉개진다
+const getValue = <TObj>(obj: TObj, key: keyof TObj) => {
+  return obj[key];
+};
+
+const result = getValue({ a: 1, b: 'hello', c: true }, 'c');
+// result: string | number | boolean — 'c' 가 keyof 전체로 넓혀졌다
+```
+
+키 자체를 별도의 타입 인자로 캡처하되, `keyof TObj` 로 제약을 건다.
+
+```ts
+const getValue = <TObj, TKey extends keyof TObj>(obj: TObj, key: TKey) => {
+  return obj[key];
+};
+
+const result = getValue({ a: 1, b: 'hello', c: true }, 'c');
+// result: boolean — 'c' 리터럴이 캡처되어 정확히 인덱싱된다
+```
+
+이런 문제를 만나면 첫 질문은 "**타입 레벨에서 필요한 걸 전부 하려면 무엇을 타입 인자로 캡처해야 하는가**" 다. 인자들 사이에 추론이 연결되고, 그 결과가 반환 타입까지 전파된다.
+
+## 9. 타입 파라미터에도 기본값이 있다
+
+타입 인자가 런타임 인자 어디에도 등장하지 않으면 추론할 재료가 없어 `unknown` 이 된다. JavaScript 의 기본 매개변수처럼 타입 파라미터에도 `=` 로 기본값을 줄 수 있다.
+
+```ts
+const createSet = <T = string>() => {
+  return new Set<T>();
+};
+
+const numberSet = createSet<number>(); // Set<number> — 명시하면 그게 우선
+const stringSet = createSet(); // Set<string> — 생략하면 기본값
+```
+
+## 10. 외부 라이브러리와 추론 연결 — Zod
+
+`makeFetch` 는 타입 인자로 반환 타입을 "주장" 할 뿐, 런타임에는 아무것도 검증하지 않는다. Zod 스키마를 받으면 런타임 검증과 타입 추론을 동시에 얻는다.
+
+```ts
+import { z } from 'zod';
+
+const makeZodSafeFetch = <TData>(url: string, schema: z.Schema<TData>): Promise<TData> => {
+  return fetch(url)
+    .then((res) => res.json())
+    .then((result) => schema.parse(result));
+};
+
+const result = await makeZodSafeFetch(
+  '/api/user',
+  z.object({
+    firstName: z.string(),
+    lastName: z.string(),
+  })
+);
+// result: { firstName: string; lastName: string } — 타입 인자 없이 스키마에서 추론
+```
+
+`z.Schema<TData>` 가 다리 역할을 한다. 스키마를 바꾸면 반환 타입이 따라오고, 런타임 검증까지 스키마가 해 준다. **고급 타입을 함수 한 곳에 집중시키면, 사용하는 쪽은 타입을 전혀 신경 쓰지 않아도 된다.**
+
+## 언제 쓰면 좋을까
+
+### 프론트엔드
+
+- **React 훅의 타입 인자** — 초기값만으로 추론이 안 되는 상태에 명시한다 (팁 3).
+
+```ts
+const [user, setUser] = useState<User | null>(null);
+```
+
+- **API 클라이언트** — 팁 10의 패턴 그대로. 스키마 하나로 런타임 검증과 타입을 동시에 해결한다.
+
+```ts
+const user = await fetchWithSchema('/api/user', userSchema);
+```
+
+### 백엔드
+
+- **설정/환경값 접근 함수** — 팁 8의 다중 제네릭으로 키별 정확한 타입을 반환한다.
+
+```ts
+const getConfig = <T extends keyof Config>(key: T): Config[T] => config[key];
+```
+
+- **요청 핸들러의 바디 파싱** — Zod 스키마를 받는 제네릭 미들웨어로 검증과 타입을 한 번에 처리한다.
+
+```ts
+const parseBody = <T>(req: Request, schema: z.Schema<T>): T => schema.parse(req.body);
+```
+
+## 정리
+
+- 제네릭은 두 가지 패턴이다 — 인자를 받아 타입을 만드는 **타입 함수**, 그리고 그 타입 함수를 얹은 **제네릭 함수**.
+- 타입 인자는 런타임 인자에서 **추론**된다 — 선언부가 복잡해도 사용부는 타입 인자를 몰라도 된다. 이 추론이 제네릭의 핵심이다.
+- `extends` 제약으로 입력을 제한해도 추론은 유지된다. 다중 제네릭 + `TKey extends keyof TObj` 패턴으로 인자 간 추론을 연결할 수 있다.
+- 제네릭 함수 내부의 `as` 단언은 정당한 도구고, 타입 파라미터에 `= 기본값` 도 줄 수 있으며, `z.Schema<TData>` 처럼 외부 라이브러리와 추론을 연결하면 고급 타입을 한 곳에 가둘 수 있다.
