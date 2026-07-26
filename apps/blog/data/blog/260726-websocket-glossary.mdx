@@ -3,7 +3,7 @@ title: 'WebSocket 시리즈 용어집'
 date: '2026-07-26T09:00:00'
 tags: ['websocket', 'network', 'reference']
 draft: false
-summary: 'WebSocket 프로토콜 시리즈에서 쓰는 용어를 한곳에 정리한다. 열림 핸드셰이크부터 프레임, opcode, 마스킹, 단편화까지 — 모든 레슨은 이 용어집의 표기를 따르며, 새 용어는 등장한 레슨에서 추가된다.'
+summary: 'WebSocket 프로토콜 시리즈에서 쓰는 용어를 한곳에 정리한다. 열림 핸드셰이크부터 프레임, opcode, 마스킹, 단편화, 종료 핸드셰이크와 close code까지 — 모든 레슨은 이 용어집의 표기를 따르며, 새 용어는 등장한 레슨에서 추가된다.'
 images:
   - '/static/images/websocket.png'
 ---
@@ -92,6 +92,30 @@ opcode 0x8~0xF인 프레임 (Close, Ping, Pong). 페이로드 125바이트 이�
 
 하나의 메시지를 여러 프레임(청크)으로 쪼개 보내는 것 — HTTP chunked 전송과 같은 발상. 첫 조각(FIN=0, 실제 opcode) → 중간(FIN=0, 0x0) → 마지막(FIN=1, 0x0). 브라우저 API에서는 보이지 않는다. — [§5.4](https://datatracker.ietf.org/doc/html/rfc6455#section-5.4)
 
+## 종료와 재연결
+
+### 종료 핸드셰이크 (closing handshake)
+
+Close 프레임(0x8)을 서로 주고받은 뒤 TCP를 닫는 정상 종료 절차. 완료 후 닫히면 clean close. Close를 보내거나 받는 순간 CLOSING 상태가 된다. — [§7.1.2](https://datatracker.ietf.org/doc/html/rfc6455#section-7.1.2)
+
+### close code
+
+Close 프레임 페이로드 첫 2바이트의 16비트 정수. 종료 이유를 전달한다. 1000 정상, 4000–4999 앱 자유. 1005/1006/1015는 와이어 금지(로컬 합성 전용). — [§7.4](https://datatracker.ietf.org/doc/html/rfc6455#section-7.4)
+
+### 지수 백오프 (exponential backoff)
+
+재시도 간격을 지수적으로 늘리는 전략. 비정상 종료 후 재연결에 랜덤 초기 지연과 함께 스펙이 SHOULD로 권고 — 동시 재연결 쇄도가 서버 복구를 막는 것을 방지. — [§7.2.3](https://datatracker.ietf.org/doc/html/rfc6455#section-7.2.3)
+
+## 브라우저 API
+
+### readyState
+
+브라우저 WebSocket 객체의 상태: 0 CONNECTING, 1 OPEN, 2 CLOSING, 3 CLOSED. RFC의 연결 상태 기계를 API로 노출한 것. — [WHATWG](https://websockets.spec.whatwg.org/)
+
+### wasClean
+
+CloseEvent의 불리언 속성. 종료 핸드셰이크가 완료된 뒤 TCP가 닫혔는지(clean close 여부)를 나타낸다. false + 1006이면 비정상 끊김. — [WHATWG](https://websockets.spec.whatwg.org/)
+
 ## 기타 표기
 
 ### 0x 표기 (hexadecimal)
@@ -100,4 +124,4 @@ opcode 0x8~0xF인 프레임 (Close, Ping, Pong). 페이로드 125바이트 이�
 
 ---
 
-시리즈 글: [레슨 1 — WebSocket은 HTTP인가? 열림 핸드셰이크](/blog/260726-websocket-http-handshake) · [레슨 2 — 프레임 구조: opcode와 마스킹](/blog/260726-websocket-frame-structure)
+시리즈 글: [레슨 1 — WebSocket은 HTTP인가? 열림 핸드셰이크](/blog/260726-websocket-http-handshake) · [레슨 2 — 프레임 구조: opcode와 마스킹](/blog/260726-websocket-frame-structure) · [레슨 3 — 종료 핸드셰이크와 close code](/blog/260726-websocket-closing-handshake)
