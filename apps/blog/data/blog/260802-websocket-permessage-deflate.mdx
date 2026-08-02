@@ -1,0 +1,218 @@
+---
+title: '(6) 확장: permessage-deflate (RFC 7692)'
+date: '2026-08-02T10:00:00'
+tags: ['websocket', 'network', 'til']
+draft: false
+summary: '프레임 헤더의 수수께끼였던 RSV1 비트가 주인을 만난다 — 메시지를 DEFLATE로 압축하는 유일한 표준 확장 permessage-deflate. Sec-WebSocket-Extensions 협상, 꼬리 4바이트 절단, context takeover의 압축률↔메모리 저울, 그리고 CRIME 계열 공격 때문에 기본으로 켜지 않는 이유까지.'
+images:
+  - '/static/images/websocket.png'
+---
+
+![WebSocket](/static/images/websocket.png)
+
+> WebSocket 프로토콜 시리즈의 여섯 번째 레슨. [레슨 2](/blog/260726-websocket-frame-structure)에서 [프레임](/blog/260726-websocket-glossary#프레임-frame) 헤더의 [RSV1](/blog/260726-websocket-glossary#rsv1-per-message-compressed) 비트는 "확장을 협상하지 않았다면 0이어야 한다"는 수수께끼로 남겨뒀다. 오늘 그 비트가 주인을 만난다 — 메시지를 압축하는 유일한 표준 [확장](/blog/260726-websocket-glossary#확장-extension), 그리고 그것이 기본으로 켜져 있지 않은 이유.
+
+## 핵심 답부터
+
+[RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692)의 **[permessage-deflate](/blog/260726-websocket-glossary#permessage-deflate)**는 데이터 메시지의 페이로드를 **DEFLATE 알고리즘으로 압축하는 확장**이다. [열림 핸드셰이크](/blog/260726-websocket-glossary#열림-핸드셰이크-opening-handshake)의 `Sec-WebSocket-Extensions` 헤더로 협상하고, 압축된 메시지는 **첫 프레임의 RSV1 비트 = 1**로 표시한다 ([§6](https://datatracker.ietf.org/doc/html/rfc7692#section-6)). 반복이 많은 JSON 트래픽에서 효과가 크지만, **메모리 비용과 보안 함정**이 있어 서버에서는 켜는 것이 항상 이득은 아니다.
+
+## 배경: 압축이란 — 이미 매일 쓰고 있다
+
+프론트엔드가 받는 HTTP 응답 대부분은 이미 압축되어 온다 — DevTools Network 탭에서 아무 응답이나 열면 `Content-Encoding: gzip`(또는 br)이 보인다. 원리는 하나다: **데이터 안의 반복을 찾아 "아까 그거"라는 짧은 참조로 바꾼다.** DEFLATE의 핵심인 LZ77은 **최근에 지나간 바이트를 담아두는 버퍼(슬라이딩 윈도우, 최대 32KB)**를 유지하면서, 지금 입력이 버퍼 속 어딘가와 같으면 "뒤로 N바이트, 길이 M" 참조로 대체한다 ([§7](https://datatracker.ietf.org/doc/html/rfc7692#section-7) 정의부). JSON이 압축에 유리한 이유가 바로 이것이다 — `{"type":"...","payload":...}` 의 키 이름들이 매번 반복되니까.
+
+말로만 들으면 추상적이니, 아주 작은 예로 직접 해보자:
+
+```text
+원문 (16글자):
+반짝반짝 작은 별, 작은 별
+
+LZ77이 읽어 나가며 하는 일 (실제로는 바이트 단위지만, 여기선 글자로 센다):
+반짝              ← 처음 보는 글자들 → 그대로 기록
+[뒤로 2, 길이 2]   ← "반짝"이 또 나옴 → 방금 그거! 참조로 대체
+ 작은 별,          ← 처음 보는 글자들 → 그대로 기록
+[뒤로 6, 길이 4]   ← " 작은 별"도 아까 나옴 → 참조로 대체
+```
+
+"그대로 기록"과 "아까 그거 참조" 두 가지 조각의 나열 — 이것이 압축의 전부다. 참조는 원문보다 훨씬 짧게 표현되므로, **반복이 많을수록 많이 줄어든다.** 이제 실전 데이터로 바꿔보면:
+
+```text
+메시지 1: {"type":"price_tick","symbol":"BTCUSDT","price":64210.55}
+메시지 2: {"type":"price_tick","symbol":"BTCUSDT","price":64211.10}
+          └──────────────── 거의 전부 메시지 1의 반복 ─────────┘
+```
+
+메시지 2는 대부분 메시지 1에 이미 나온 바이트다 — 참조 몇 개로 대체 가능하고, 실제로 새 정보는 `1.10` 몇 글자뿐이다. 서버가 초당 수십 번 보내는 시세·알림 메시지가 대개 이런 모양이니, WebSocket 트래픽이 압축에 유리한 이유가 몸으로 느껴질 것이다.
+
+차이는 단위다. HTTP의 gzip이 _응답 하나_ 를 압축한다면, permessage-deflate는 이름 그대로 _메시지(per-message)_ 단위로 압축한다 — 그리고 연결이 길게 살아 있다는 WebSocket의 특성이 아래의 독특한 선택지를 만든다.
+
+## 협상: 살아남은 헤더가 일하는 순간 (§5)
+
+[레슨 1](/blog/260726-websocket-http-handshake)에서 스쳐 갔고 [레슨 5](/blog/260728-websocket-over-http2-http3)에서 "살아남는 헤더"로 재등장한 `Sec-WebSocket-Extensions`가 주인공이 되는 레슨이다:
+
+```text
+클라이언트 (제안):
+GET /chat HTTP/1.1
+Upgrade: websocket
+Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+
+서버 (수락 — 파라미터는 조정 가능):
+HTTP/1.1 101 Switching Protocols
+Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover
+```
+
+클라이언트가 제안(MUST)하고 서버가 같은 이름을 되돌려주면 수락이다 — 서버는 제안받은 파라미터를 _조정해서_ 수락할 수 있다. 서버가 이 헤더를 아예 생략하면? **압축 없이 연결은 정상 진행**된다. 확장은 언제나 선택 사항이고, 실패해도 연결이 죽지 않는다. 브라우저는 이 협상을 자동으로 하며 JS에서는 `Sec-WebSocket-Extensions`를 만질 수 없다 — [ping](/blog/260726-websocket-glossary#ping과-pong)([레슨 4](/blog/260726-websocket-ping-pong-keepalive))과 같은 구도다.
+
+## 와이어에서: RSV1의 정체 (§6)
+
+레슨 2의 미결 항목이 풀린다. RFC 7692는 RSV1 비트를 **"Per-Message Compressed" 비트**로 명명하고 규칙을 준다:
+
+| 대상 | RSV1 |
+| --- | --- |
+| 압축된 메시지의 **첫 프레임** | **1** |
+| 같은 메시지의 이후 조각([단편화](/blog/260726-websocket-glossary#단편화-fragmentation) 시) | 0 |
+| [컨트롤 프레임](/blog/260726-websocket-glossary#컨트롤-프레임-control-frame) (Close·Ping·Pong) | 0 — **컨트롤 프레임은 절대 압축되지 않는다** |
+
+근거는 [§6.1](https://datatracker.ietf.org/doc/html/rfc7692#section-6.1): "An endpoint MUST NOT set the 'Per-Message Compressed' bit of control frames and non-first fragments of a data message" — 컨트롤 프레임과 비(非)첫 조각에는 설정 금지.
+
+단위가 "메시지"라는 것이 이름(per-_message_)의 뜻이다: 압축 여부는 메시지 전체가 한 번 정하고, 첫 프레임의 RSV1 하나로 표시한다. 압축 절차에는 재미있는 디테일이 있다 — DEFLATE 출력의 꼬리 4바이트 `0x00 0x00 0xff 0xff` 를 **잘라내고 보낸다** ([§7.2.1](https://datatracker.ietf.org/doc/html/rfc7692#section-7.2.1)). 이 꼬리는 항상 같은 값이라 보낼 필요가 없고, 수신 쪽이 다시 붙여서 해제한다. 스펙이 바이트 단위 낭비까지 아끼는 모습이다.
+
+## 핵심 개념: context takeover — 창을 이어 쓸 것인가
+
+WebSocket 연결은 길게 살고, 메시지는 계속 흐른다. 그러면 질문이 생긴다: **메시지 하나를 압축한 뒤, 슬라이딩 윈도우(최근 바이트의 기억)를 버릴 것인가, 다음 메시지에 이어 쓸 것인가?**
+
+> context takeover: The same LZ77 sliding window used by the endpoint to build frames of the previous sent message is reused to build frames of the next message.
+>
+> — [RFC 7692 §7](https://datatracker.ietf.org/doc/html/rfc7692#section-7). 번역: 이전 메시지를 압축할 때 쓴 슬라이딩 윈도우를 다음 메시지 압축에 재사용하는 것.
+
+일상의 비유로: 매일 통화하는 친구에게는 "어제 말한 그 카페에서 보자" 한마디면 되지만, 처음 통화하는 사람에게는 카페 이름·위치를 처음부터 다 말해야 한다. [context takeover](/blog/260726-websocket-glossary#context-takeover)는 **"전에 한 얘기"를 기억하는 통화**이고, no_context_takeover는 **매번 처음 거는 전화**다. 위의 시세 메시지 예로 돌아가면:
+
+```text
+context takeover 있음 (기억 이어 씀):
+메시지 1: 57 bytes → 압축 후 그럭저럭
+메시지 2: 57 bytes → "아까 그거" 참조 + 새 숫자 몇 글자 = 열몇 바이트
+메시지 3 이후: 계속 열몇 바이트   ← 진가는 여기서부터
+
+no_context_takeover (매번 기억 리셋):
+메시지 1: 57 bytes → 압축 후 그럭저럭
+메시지 2: 57 bytes → 메시지 1을 기억 못 하므로 다시 그럭저럭
+메시지 3 이후: 영원히 그럭저럭   ← 메시지 안의 반복만 활용
+```
+
+그럼 왜 기억을 끄는 옵션이 있을까? 대가가 **메모리**이기 때문이다: 기억을 유지하려면 연결마다 압축·해제용 윈도우(각각 최대 32KB + zlib 오버헤드)를 _연결이 사는 내내_ 붙들고 있어야 한다. 브라우저는 연결이 몇 개 없으니 부담이 없지만, **연결 1만 개를 든 서버에게는 이것만 수백 MB다.** 4개의 협상 파라미터는 전부 "압축률 ↔ 메모리"라는 이 저울의 조절 손잡이다 ([§7.1](https://datatracker.ietf.org/doc/html/rfc7692#section-7.1)):
+
+| 파라미터 | 뜻 |
+| --- | --- |
+| `server_no_context_takeover` | 서버는 매 메시지를 빈 윈도우로 시작하라 — 클라이언트가 해제용 기억을 유지할 필요가 없어진다 |
+| `client_no_context_takeover` | 클라이언트는 매 메시지를 빈 윈도우로 시작하라 — 서버의 해제용 메모리 절약 (서버가 응답에 넣어 강제) |
+| `server_max_window_bits` | 서버의 윈도우 크기 상한. 값은 8~15 = 2⁸(256B)~2¹⁵(32KB) |
+| `client_max_window_bits` | 클라이언트의 윈도우 크기 상한. 위와 동일한 8~15 |
+
+"no_context_takeover = 기억을 버려 메모리를 아낀다, max_window_bits = 기억의 크기 자체를 줄인다"로 읽으면 네 개가 한 문장이 된다. 이 열쇠로 앞의 협상 예시를 다시 읽어보자:
+
+```text
+서버의 응답:
+Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover
+
+사람 말로 번역하면:
+"압축은 하자. 단, 나(server)는 매 메시지마다 기억을 리셋할게(no_context_takeover)."
+→ 서버 자신의 압축용 윈도우를 상주시키지 않아도 되고,
+→ 클라이언트도 서버 메시지 해제용 기억을 유지할 필요가 없어진다.
+→ 대가: 서버→클라 방향의 압축률은 위 예시의 "영원히 그럭저럭"이 된다.
+```
+
+### 직접 체감하기 — 브라우저 콘솔에서
+
+브라우저 내장 `CompressionStream('deflate-raw')`으로 실제 DEFLATE를 돌려볼 수 있다. DevTools 콘솔에 붙여 넣으면 ① 단독 압축(no_context_takeover 상황)과 ② 직전 메시지의 문맥을 이어받았을 때의 추정 크기가 비교된다:
+
+```js
+async function deflateSize(text) {
+  const stream = new Blob([new TextEncoder().encode(text)])
+    .stream()
+    .pipeThrough(new CompressionStream('deflate-raw'))
+  return (await new Response(stream).arrayBuffer()).byteLength
+}
+
+const prev = '{"type":"price_tick","symbol":"BTCUSDT","price":64210.55,"volume":1.2}'
+const cur = '{"type":"price_tick","symbol":"BTCUSDT","price":64211.10,"volume":0.8}'
+
+const raw = new TextEncoder().encode(cur).length
+const alone = await deflateSize(cur)
+// 추정 방식: deflate(직전+이번) − deflate(직전).
+// 브라우저 CompressionStream에는 메시지 경계 flush가 없어 근사값이다.
+const withCtx = Math.max(1, (await deflateSize(prev + cur)) - (await deflateSize(prev)))
+
+console.log(`원본: ${raw} bytes`)
+console.log(`단독 압축 (no_context_takeover): ${alone} bytes`)
+console.log(`문맥 이어받기 (context takeover, 추정): ~${withCtx} bytes`)
+```
+
+전형적인 시세 JSON에서 단독 압축은 원본보다 조금 줄어드는 정도지만, 문맥을 이어받으면 열몇 바이트 수준으로 떨어진다. 아주 짧은 메시지를 넣어보면 단독 압축이 **원본보다 커지는** 것도 확인할 수 있다.
+
+## 실무: 왜 기본으로 켜지 않는가
+
+- **브라우저는 준비되어 있다** — Chrome·Firefox·Safari·Edge 모두 [협상되면 자동으로 압축](https://websocket.org/standards/)한다. JS 코드는 한 줄도 안 바뀐다.
+- **병목은 서버다** — Node `ws` 라이브러리는 `perMessageDeflate`를 [기본 비활성](https://github.com/websockets/ws)으로 두는데, README가 이유를 명시한다: zlib 압축의 동시성이 높아지면 (특히 Linux에서) **"catastrophic memory fragmentation"** — 파국적 메모리 단편화와 성능 저하를 일으킬 수 있다. 켜려면 실제 워크로드를 흉내 낸 부하 테스트가 선행되어야 한다.
+- **보안: 비밀과 압축을 섞지 말 것** — §8이 경고하는 [알려진 공격](https://datatracker.ietf.org/doc/html/rfc7692#section-8): 공격자가 조종하는 데이터와 비밀(토큰 등)이 _같은 압축 문맥_ 에 들어가면, 압축된 _크기의 변화_ 만 관찰해도 비밀을 한 글자씩 맞출 수 있다 ([TLS](/blog/260726-websocket-glossary#tls-transport-layer-security)의 CRIME/BREACH와 같은 원리). 시나리오로 보면:
+
+  ```text
+  서버가 보내는 메시지에 비밀 토큰(token=k9x…)과
+  공격자가 조종할 수 있는 문자열(예: 채팅 입력)이 함께 실려 압축된다면 —
+
+  공격자 입력 "token=a"  → 암호화된 크기 41 bytes
+  공격자 입력 "token=k"  → 암호화된 크기 40 bytes ← 줄었다! 첫 글자는 k
+  공격자 입력 "token=k9" → 40 bytes               ← 둘째 글자는 9 … (반복)
+  ```
+
+  추측이 비밀과 일치하는 순간 "아까 그거" 참조로 대체되어 크기가 준다 — 공격자는 내용을 한 번도 보지 못했고, **크기만 관찰했다.** 암호화는 내용을 숨기지만 크기는 숨기지 못한다.
+
+- **작은 메시지는 오히려 커질 수 있다** — 압축에도 고정 오버헤드가 있어, `ws`는 1024바이트 미만 메시지를 압축하지 않는 `threshold` 기본값을 둔다. 위 콘솔 실험에 아주 짧은 메시지를 넣어 직접 확인해보라.
+
+> **래퍼에 주는 함의.** 압축은 협상·표시·해제 전부가 브라우저 내부의 일이라 래퍼 코드는 무변경이다. 확인할 것은 하나 — DevTools에서 핸드셰이크 응답의 `Sec-WebSocket-Extensions`를 보면 지금 연결이 압축 중인지, 어떤 파라미터로 합의됐는지 즉시 알 수 있다. 대역폭 이슈를 디버깅할 때 첫 번째로 볼 곳이다.
+
+## 확인 퀴즈
+
+**Q1. 압축된 메시지에서 RSV1 비트는 어디에 설정되는가?** (해당 메시지의 첫 번째 프레임에만 / 해당 메시지의 모든 조각 각각에 / 해당 메시지의 마지막 프레임에만 / 컨트롤 프레임을 포함한 전 프레임에)
+
+<details>
+<summary>정답 보기</summary>
+
+**해당 메시지의 첫 번째 프레임에만.** 압축 단위는 메시지이고, 표시는 첫 프레임의 RSV1 하나다. 비첫 조각과 컨트롤 프레임에는 설정 금지 (MUST NOT, §6.1).
+
+</details>
+
+**Q2. context takeover가 뜻하는 것은?** (이전 메시지의 슬라이딩 윈도우를 다음에 재사용 / 서버가 클라이언트의 압축 권한을 인계받음 / 메시지 하나를 여러 프레임으로 나눠 압축함 / 압축 실패 시 원본 그대로 전송으로 전환함)
+
+<details>
+<summary>정답 보기</summary>
+
+**이전 메시지의 슬라이딩 윈도우를 다음에 재사용.** §7의 정의 그대로 — 기억(윈도우)을 이어 쓰면 반복 JSON의 압축률이 크게 좋아지는 대신 연결마다 메모리를 상주시켜야 한다.
+
+</details>
+
+**Q3. 서버가 응답에서 Sec-WebSocket-Extensions를 생략하면?** (압축 없이 연결은 그대로 정상 진행된다 / 클라이언트는 연결을 실패로 처리해야 한다 / 기본 파라미터로 압축이 자동 적용된다 / 클라이언트가 협상을 한 번 더 재시도한다)
+
+<details>
+<summary>정답 보기</summary>
+
+**압축 없이 연결은 그대로 정상 진행된다.** 확장은 언제나 선택 사항 — 수락되지 않으면 그냥 비압축으로 동작한다. 협상 실패가 연결 실패는 아니다.
+
+</details>
+
+**Q4. 압축 문맥에 비밀과 공격자 데이터가 섞이면 위험한 이유는?** (압축된 크기의 변화가 비밀의 내용을 누설해서 / 슬라이딩 윈도우가 넘쳐 비밀이 평문 노출돼서 / 공격자가 RSV1 비트를 조작할 수 있게 되어서 / 해제 과정의 오류로 연결이 강제 종료되어서)
+
+<details>
+<summary>정답 보기</summary>
+
+**압축된 크기의 변화가 비밀의 내용을 누설해서.** 추측이 비밀과 일치하면 참조로 줄어 크기가 작아진다 — 크기만 관찰해 비밀을 한 글자씩 복원하는 CRIME/BREACH 계열 공격 (§8). 암호화는 크기를 숨기지 못한다.
+
+</details>
+
+## 다음 단계
+
+**1차 자료 읽기.** 오늘의 원문: [RFC 7692 §6–7](https://datatracker.ietf.org/doc/html/rfc7692#section-6). 레슨 5에서 RFC 8441을 통독했다면, 이번엔 §7.2.1의 압축 절차(꼬리 4바이트 제거)를 원문으로 따라가 보라. 실무 해설은 [HPBN Ch.17](https://hpbn.co/websocket/)의 압축 절.
+
+이것으로 계획된 6개 레슨이 완주됐다. 다음은 예약된 실습 — **라이브러리 없이 Node `http` 모듈로 최소 WebSocket 서버 만들기**. 핸드셰이크(레슨 1), 프레임 파싱(레슨 2), 종료(레슨 3), ping/pong(레슨 4)을 전부 손으로 구현하며 여섯 레슨을 하나로 묶는다.
+
+---
+
+시리즈 참고: [레슨 1 — WebSocket은 HTTP인가? 열림 핸드셰이크](/blog/260726-websocket-http-handshake) · [레슨 2 — 프레임 구조: opcode와 마스킹](/blog/260726-websocket-frame-structure) · [레슨 3 — 종료 핸드셰이크와 close code](/blog/260726-websocket-closing-handshake) · [레슨 4 — ping/pong과 keepalive](/blog/260726-websocket-ping-pong-keepalive) · [레슨 5 — HTTP/2·3 위의 WebSocket](/blog/260728-websocket-over-http2-http3) · [WebSocket 시리즈 용어집](/blog/260726-websocket-glossary)

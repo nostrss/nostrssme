@@ -1,9 +1,9 @@
 ---
-title: 'WebSocket 시리즈 용어집'
+title: '(0) WebSocket 시리즈 용어집'
 date: '2026-07-26T09:00:00'
 tags: ['websocket', 'network', 'reference']
 draft: false
-summary: 'WebSocket 프로토콜 시리즈에서 쓰는 용어를 한곳에 정리한다. 열림 핸드셰이크부터 프레임, opcode, 마스킹, 단편화, 종료 핸드셰이크와 close code, HTTP/2·3의 Extended CONNECT까지 — 모든 레슨은 이 용어집의 표기를 따르며, 새 용어는 등장한 레슨에서 추가된다.'
+summary: 'WebSocket 프로토콜 시리즈에서 쓰는 용어를 한곳에 정리한다. 열림 핸드셰이크부터 프레임, opcode, 마스킹, 단편화, 종료 핸드셰이크와 close code, HTTP/2·3의 Extended CONNECT, permessage-deflate 압축 확장까지 — 모든 레슨은 이 용어집의 표기를 따르며, 새 용어는 등장한 레슨에서 추가된다.'
 images:
   - '/static/images/websocket.png'
 ---
@@ -144,6 +144,24 @@ HTTP 버전이 아니라 요청 방식의 이름. 프록시 터널용 메서드�
 
 HTTP/2·3에서 요청 줄("GET /chat HTTP/1.1")을 대신하는 `:` 접두사 헤더들 — `:method`, `:path`, `:scheme`, `:authority`, 그리고 RFC 8441이 추가한 `:protocol`. 일반 헤더보다 항상 앞에 온다. — [RFC 9113 §8.3](https://datatracker.ietf.org/doc/html/rfc9113#section-8.3)
 
+## 압축 확장
+
+### 확장 (extension)
+
+핸드셰이크의 `Sec-WebSocket-Extensions` 헤더로 협상하는 프로토콜 추가 기능. 클라이언트가 제안, 서버가 파라미터를 조정해 수락. 수락되지 않으면 비압축 등 기본 동작으로 정상 진행 — 협상 실패 ≠ 연결 실패. — [RFC 6455 §9](https://datatracker.ietf.org/doc/html/rfc6455#section-9)
+
+### RSV1 (Per-Message Compressed)
+
+프레임 헤더의 예약 비트 중 첫째. RFC 7692가 "이 메시지는 압축됨" 표시로 할당했다. 압축 메시지의 첫 프레임에만 1 — 비첫 조각·컨트롤 프레임에는 설정 금지(MUST NOT). — [RFC 7692 §6](https://datatracker.ietf.org/doc/html/rfc7692#section-6)
+
+### permessage-deflate
+
+메시지 페이로드를 DEFLATE로 압축하는 유일한 표준 확장. 꼬리 4바이트(`00 00 ff ff`)를 잘라 보내고 수신 쪽이 복원한다. 컨트롤 프레임은 압축 대상이 아니다. — [RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692)
+
+### context takeover
+
+이전 메시지 압축에 쓴 LZ77 슬라이딩 윈도우(최근 바이트의 기억, 최대 32KB)를 다음 메시지에 재사용하는 것. 반복 JSON의 압축률을 크게 높이는 대신 연결마다 메모리를 상주시킨다. `*_no_context_takeover`·`*_max_window_bits` 파라미터가 이 트레이드오프의 조절 손잡이. — [RFC 7692 §7](https://datatracker.ietf.org/doc/html/rfc7692#section-7)
+
 ## 기타 표기
 
 ### 0x 표기 (hexadecimal)
@@ -152,4 +170,4 @@ HTTP/2·3에서 요청 줄("GET /chat HTTP/1.1")을 대신하는 `:` 접두사 �
 
 ---
 
-시리즈 글: [레슨 1 — WebSocket은 HTTP인가? 열림 핸드셰이크](/blog/260726-websocket-http-handshake) · [레슨 2 — 프레임 구조: opcode와 마스킹](/blog/260726-websocket-frame-structure) · [레슨 3 — 종료 핸드셰이크와 close code](/blog/260726-websocket-closing-handshake) · [레슨 4 — ping/pong과 keepalive](/blog/260726-websocket-ping-pong-keepalive) · [레슨 5 — HTTP/2·3 위의 WebSocket](/blog/260728-websocket-over-http2-http3)
+시리즈 글: [레슨 1 — WebSocket은 HTTP인가? 열림 핸드셰이크](/blog/260726-websocket-http-handshake) · [레슨 2 — 프레임 구조: opcode와 마스킹](/blog/260726-websocket-frame-structure) · [레슨 3 — 종료 핸드셰이크와 close code](/blog/260726-websocket-closing-handshake) · [레슨 4 — ping/pong과 keepalive](/blog/260726-websocket-ping-pong-keepalive) · [레슨 5 — HTTP/2·3 위의 WebSocket](/blog/260728-websocket-over-http2-http3) · [레슨 6 — 확장: permessage-deflate](/blog/260802-websocket-permessage-deflate)
