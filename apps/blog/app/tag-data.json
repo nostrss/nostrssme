@@ -1,11 +1,11 @@
 {
   "theo": 4,
   "nextjs": 4,
-  "youtube": 9,
+  "youtube": 10,
   "google": 4,
   "web": 8,
   "animation": 1,
-  "ai": 6,
+  "ai": 7,
   "agents": 2,
   "baseline": 1,
   "typescript": 14,
@@ -40,7 +40,7 @@
   "pipe": 2,
   "go": 2,
   "curry": 1,
-  "refactoring": 1,
+  "refactoring": 2,
   "lazy-evaluation": 5,
   "performance": 1,
   "eager-evaluation": 1,
@@ -119,5 +119,7 @@
   "architecture": 1,
   "websocket": 7,
   "network": 7,
-  "reference": 1
+  "reference": 1,
+  "kent-beck": 1,
+  "agentos": 1
 }
